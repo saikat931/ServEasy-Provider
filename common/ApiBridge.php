@@ -1,0 +1,162 @@
+<?php
+/**
+ * ServEasy Frontend-to-Backend Direct API Bridge
+ * Enables direct communication between all Frontend Portals (Web, Provider, Admin, Super Admin)
+ * and the Central Backend Engine (backend/api), respecting each portal's independent config.php.
+ */
+
+namespace Frontend;
+
+class ApiBridge {
+    private static ?string $cachedApiUrl = null;
+
+    /**
+     * Resolves the Central API Base URL directly to the project's backend/api
+     */
+    public static function getApiBaseUrl(): string {
+        if (self::$cachedApiUrl !== null) {
+            return self::$cachedApiUrl;
+        }
+
+        // 1. Check if portal's independent config.php is set
+        $possibleClasses = [
+            '\ServEasy\Web\PortalConfig',
+            '\ServEasy\Provider\PortalConfig',
+            '\ServEasy\Admin\PortalConfig',
+            '\ServEasy\SuperAdmin\PortalConfig',
+            '\PortalConfig'
+        ];
+        foreach ($possibleClasses as $cls) {
+            if (class_exists($cls) && !empty($cls::$liveBackendApiUrl)) {
+                self::$cachedApiUrl = rtrim($cls::$liveBackendApiUrl, '/');
+                return self::$cachedApiUrl;
+            }
+        }
+
+        // 2. Direct environment variable override if present
+        if (!empty($_ENV['API_BASE_URL']) || !empty($_ENV['BACKEND_API_URL'])) {
+            self::$cachedApiUrl = rtrim($_ENV['API_BASE_URL'] ?? $_ENV['BACKEND_API_URL'], '/');
+            return self::$cachedApiUrl;
+        }
+
+        // 3. Auto-detect relative to current server and path
+        $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        if (preg_match('#^(.*?)/(?:frontend-[a-z]+|Frontend/[^/]+)#i', $uri, $m)) {
+            $base = $m[1] . '/backend/api';
+        } elseif (preg_match('#^(.*?/ServEasy-v2)#i', $uri, $m)) {
+            $base = $m[1] . '/backend/api';
+        } else {
+            $base = '/ServEasy-v2/backend/api';
+        }
+
+        self::$cachedApiUrl = "{$scheme}://{$host}{$base}";
+        return self::$cachedApiUrl;
+    }
+
+    /**
+     * Call backend API directly via cURL with resilient timeout
+     */
+    public static function callApi(string $endpoint, string $method = 'GET', $data = null): ?array {
+        $endpoint = ltrim($endpoint, '/');
+        $endpoint = preg_replace('/^(backend\/)?api\//i', '', $endpoint);
+        $url = self::getApiBaseUrl() . '/' . $endpoint;
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Accept: application/json',
+            'User-Agent: ServEasy-Frontend-Bridge/1.0'
+        ]);
+
+        if (strtoupper($method) === 'POST') {
+            curl_setopt($ch, CURLOPT_POST, true);
+            if ($data !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, is_array($data) ? http_build_query($data) : $data);
+            }
+        }
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($response && $httpCode >= 200 && $httpCode < 300) {
+            $json = json_decode($response, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $json;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get OTP Configuration directly with multi-layer fallback
+     */
+    public static function getOtpConfig(): array {
+        $default = [
+            'mode' => 'both',
+            'label' => 'Email or Phone Number',
+            'placeholder' => 'Please enter your phone number or email',
+            'validation_message' => 'Please enter a valid email or 10-digit mobile number.',
+            'input_type' => 'text'
+        ];
+
+        // 1. Try local PHP class if backend is on local filesystem
+        $possiblePaths = [
+            __DIR__ . '/../../backend/app/services/OtpConfigService.php',
+            __DIR__ . '/../../../backend/app/services/OtpConfigService.php',
+            __DIR__ . '/../backend/app/services/OtpConfigService.php',
+            __DIR__ . '/backend/app/services/OtpConfigService.php'
+        ];
+
+        foreach ($possiblePaths as $path) {
+            if (file_exists($path)) {
+                try {
+                    require_once $path;
+                    if (class_exists('App\Services\OtpConfigService')) {
+                        return \App\Services\OtpConfigService::getConfig();
+                    }
+                } catch (\Throwable $t) {}
+            }
+        }
+
+        // 2. Query Central Backend API
+        try {
+            $apiRes = self::callApi('platform-settings.php?action=get_otp_config');
+            if (!empty($apiRes['data']) && is_array($apiRes['data'])) {
+                return array_merge($default, $apiRes['data']);
+            }
+        } catch (\Throwable $t) {}
+
+        return $default;
+    }
+
+    /**
+     * Safely load bootstrap.php if it exists
+     */
+    public static function loadBootstrap(): bool {
+        $possiblePaths = [
+            __DIR__ . '/../../backend/api/bootstrap.php',
+            __DIR__ . '/../../../backend/api/bootstrap.php',
+            __DIR__ . '/../backend/api/bootstrap.php',
+            __DIR__ . '/backend/api/bootstrap.php'
+        ];
+
+        foreach ($possiblePaths as $path) {
+            if (file_exists($path)) {
+                try {
+                    require_once $path;
+                    return true;
+                } catch (\Throwable $t) {}
+            }
+        }
+        return false;
+    }
+}
