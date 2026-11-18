@@ -1,6 +1,8 @@
-# Local / live database credential files (never commit passwords)
+# Local / live environment & database credential files (never commit or overwrite on deploy)
 .env
+.env.local
 db.env
+host.env
 
 # OS generated files
 .DS_Store

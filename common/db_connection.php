@@ -10,21 +10,27 @@ if (!class_exists('Database')) {
     {
         private static ?PDO $pdo = null;
 
-        private static function loadEnvFiles(): array
+        private static function loadEnvFiles(array &$checkedPaths = []): array
         {
             $vars = [];
             $rootDir = dirname(__DIR__);
+            $parentDir = dirname($rootDir);
             $envFiles = [
                 $rootDir . '/.env',
+                $rootDir . '/host.env',
                 $rootDir . '/db.env',
                 $rootDir . '/.env.local',
-                $rootDir . '/host.env',
+                $parentDir . '/.env',
+                $parentDir . '/host.env',
+                $parentDir . '/db.env',
             ];
             foreach ($envFiles as $envFile) {
-                if (!file_exists($envFile) || !is_readable($envFile)) {
+                $exists = @file_exists($envFile);
+                $checkedPaths[] = basename(dirname($envFile)) . '/' . basename($envFile) . ($exists ? ' (found)' : ' (missing)');
+                if (!$exists || !@is_readable($envFile)) {
                     continue;
                 }
-                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                $lines = @file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
                 if (!is_array($lines)) {
                     continue;
                 }
@@ -47,27 +53,41 @@ if (!class_exists('Database')) {
             return $vars;
         }
 
+        private static function getVar(array $vars, array $keys, string $default = ''): string
+        {
+            foreach ($keys as $k) {
+                if (!empty($vars[$k])) return (string)$vars[$k];
+                if (!empty($_ENV[$k])) return (string)$_ENV[$k];
+                if (!empty($_SERVER[$k])) return (string)$_SERVER[$k];
+                $g = getenv($k);
+                if ($g !== false && $g !== '') return (string)$g;
+            }
+            return $default;
+        }
+
         public static function connect(): PDO
         {
             if (self::$pdo !== null) {
                 return self::$pdo;
             }
 
-            $vars = self::loadEnvFiles();
+            $checkedPaths = [];
+            $vars = self::loadEnvFiles($checkedPaths);
 
             $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
             $isLocal = in_array($host, ['localhost', '127.0.0.1', '::1']) || str_starts_with($host, 'localhost:');
 
-            $dbHost = $vars['DB_HOST'] ?? $_ENV['DB_HOST'] ?? ($isLocal ? '127.0.0.1' : 'localhost');
-            $dbPort = $vars['DB_PORT'] ?? $_ENV['DB_PORT'] ?? '3306';
-            $dbName = $vars['DB_DATABASE'] ?? $vars['DB_NAME'] ?? $_ENV['DB_DATABASE'] ?? ($isLocal ? 'serveasy_v2' : '');
-            $dbUser = $vars['DB_USERNAME'] ?? $vars['DB_USER'] ?? $_ENV['DB_USERNAME'] ?? ($isLocal ? 'root' : '');
-            $dbPass = $vars['DB_PASSWORD'] ?? $vars['DB_PASS'] ?? $_ENV['DB_PASSWORD'] ?? '';
+            $dbHost = self::getVar($vars, ['DB_HOST'], $isLocal ? '127.0.0.1' : 'localhost');
+            $dbPort = self::getVar($vars, ['DB_PORT'], '3306');
+            $dbName = self::getVar($vars, ['DB_DATABASE', 'DB_NAME'], $isLocal ? 'serveasy_v2' : '');
+            $dbUser = self::getVar($vars, ['DB_USERNAME', 'DB_USER'], $isLocal ? 'root' : '');
+            $dbPass = self::getVar($vars, ['DB_PASSWORD', 'DB_PASS'], '');
 
             if (empty($dbName) || empty($dbUser)) {
                 throw new \PDOException(
                     "Database credentials are not configured for this standalone Provider domain. " .
-                    "Please create a .env file inside public_html with DB_HOST, DB_DATABASE, DB_USERNAME, and DB_PASSWORD."
+                    "Please create a .env or host.env file inside public_html (or one folder above public_html) with DB_HOST, DB_DATABASE, DB_USERNAME, and DB_PASSWORD. " .
+                    "[Checked: " . implode(', ', $checkedPaths) . "]"
                 );
             }
 
