@@ -224,7 +224,9 @@ try {
                 }
 
                 // File Upload Directory
-                $upload_dir = __DIR__ . '/../../../uploads/maids/';
+                $upload_dir = is_dir(__DIR__ . '/../../uploads')
+                    ? __DIR__ . '/../../uploads/maids/'
+                    : __DIR__ . '/../uploads/maids/';
                 if (!is_dir($upload_dir)) {
                     mkdir($upload_dir, 0777, true);
                 }
@@ -328,7 +330,7 @@ try {
     <title>Personal Staff & Maids Profile | ServEasy</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Nunito:400,600,700,800" rel="stylesheet">
-    <link href="../../Super%20Admin/css/sb-admin-2.min.css" rel="stylesheet">
+    <link href="../css/sb-admin-2.min.css" rel="stylesheet">
     <link rel="stylesheet" href="../css/notify.css">
     <style>
         :root {
@@ -1158,8 +1160,8 @@ try {
     </div>
 
     <!-- Bootstrap Core Scripts -->
-    <script src="../../Super%20Admin/vendor/jquery/jquery.min.js"></script>
-    <script src="../../Super%20Admin/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="../vendor/jquery/jquery.min.js"></script>
+    <script src="../vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="../js/notify.js"></script>
 
     <script>

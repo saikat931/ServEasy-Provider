@@ -639,8 +639,40 @@ try {
             }
             $reason = $_POST['reason'] ?? ($_POST['remarks'] ?? ($_GET['reason'] ?? null));
             try {
-                $bookingService = new \App\Services\BookingService();
-                $bookingService->updateBookingStatus($id, $status, (int)$dealer_id, $reason);
+                if (class_exists('\App\Services\BookingService')) {
+                    $bookingService = new \App\Services\BookingService();
+                    $bookingService->updateBookingStatus($id, $status, (int)$dealer_id, $reason);
+                } else {
+                    // Standalone Hostinger domain PDO fallback
+                    $allowed = ['pending', 'accepted', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected'];
+                    $stLower = strtolower(trim($status));
+                    if (!in_array($stLower, $allowed, true)) {
+                        throw new \Exception("Invalid booking status: " . $status);
+                    }
+                    $chk = $pdo->prepare("SELECT id, status FROM vehicle_wash WHERE id = ? AND provider_id = ? LIMIT 1");
+                    $chk->execute([$id, (int)$dealer_id]);
+                    if (!$chk->fetch()) {
+                        throw new \Exception("Booking not found or unauthorized.");
+                    }
+                    $extraSql = "";
+                    $params = [$stLower];
+                    if ($stLower === 'in_progress') {
+                        $extraSql .= ", started_at = COALESCE(started_at, NOW())";
+                    } elseif ($stLower === 'completed') {
+                        $extraSql .= ", completed_at = COALESCE(completed_at, NOW())";
+                    }
+                    if (!empty($reason) && in_array($stLower, ['cancelled', 'rejected'], true)) {
+                        $extraSql .= ", cancellation_reason = ?";
+                        $params[] = $reason;
+                    }
+                    $params[] = $id;
+                    $params[] = (int)$dealer_id;
+                    try {
+                        $pdo->prepare("UPDATE vehicle_wash SET status = ?{$extraSql} WHERE id = ? AND provider_id = ?")->execute($params);
+                    } catch (\Throwable $colErr) {
+                        $pdo->prepare("UPDATE vehicle_wash SET status = ? WHERE id = ? AND provider_id = ?")->execute([$stLower, $id, (int)$dealer_id]);
+                    }
+                }
 
                 header('Content-Type: application/json');
                 echo json_encode(['status' => 'success', 'message' => 'Booking status updated successfully!']);
@@ -1014,9 +1046,11 @@ try {
             $selfie_image = null;
             $extra_image = null;
 
-            $upload_dir = __DIR__ . '/../../uploads/verifications/dealer/';
+            $upload_dir = is_dir(__DIR__ . '/../uploads')
+                ? __DIR__ . '/../uploads/verifications/dealer/'
+                : __DIR__ . '/uploads/verifications/dealer/';
             if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0777, true);
+                mkdir($upload_dir, 0755, true);
             }
 
             if (isset($_FILES['id_front_image']) && $_FILES['id_front_image']['error'] == 0) {
