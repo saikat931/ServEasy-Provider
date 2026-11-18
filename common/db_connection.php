@@ -10,30 +10,41 @@ if (!class_exists('Database')) {
     {
         private static ?PDO $pdo = null;
 
-        private static function loadEnvFiles(): void
+        private static function loadEnvFiles(): array
         {
+            $vars = [];
             $rootDir = dirname(__DIR__);
-            $envFiles = [$rootDir . '/.env', $rootDir . '/db.env', $rootDir . '/host.env'];
+            $envFiles = [
+                $rootDir . '/.env',
+                $rootDir . '/db.env',
+                $rootDir . '/.env.local',
+                $rootDir . '/host.env',
+            ];
             foreach ($envFiles as $envFile) {
-                if (!file_exists($envFile)) {
+                if (!file_exists($envFile) || !is_readable($envFile)) {
                     continue;
                 }
                 $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                if (!is_array($lines)) {
+                    continue;
+                }
                 foreach ($lines as $line) {
-                    $trimmed = trim($line);
+                    $trimmed = ltrim(trim($line), "\xEF\xBB\xBF");
                     if ($trimmed === '' || str_starts_with($trimmed, '#')) {
                         continue;
                     }
                     if (str_contains($trimmed, '=')) {
                         [$k, $v] = explode('=', $trimmed, 2);
-                        $key = trim($k);
+                        $key = ltrim(trim($k), "\xEF\xBB\xBF");
                         $val = trim($v, " \t\n\r\0\x0B\"'");
-                        if (!isset($_ENV[$key]) || $_ENV[$key] === '') {
+                        if ($key !== '' && (!isset($vars[$key]) || $vars[$key] === '')) {
+                            $vars[$key] = $val;
                             $_ENV[$key] = $val;
                         }
                     }
                 }
             }
+            return $vars;
         }
 
         public static function connect(): PDO
@@ -42,16 +53,16 @@ if (!class_exists('Database')) {
                 return self::$pdo;
             }
 
-            self::loadEnvFiles();
+            $vars = self::loadEnvFiles();
 
             $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
             $isLocal = in_array($host, ['localhost', '127.0.0.1', '::1']) || str_starts_with($host, 'localhost:');
 
-            $dbHost = $_ENV['DB_HOST'] ?? ($isLocal ? '127.0.0.1' : 'localhost');
-            $dbPort = $_ENV['DB_PORT'] ?? '3306';
-            $dbName = $_ENV['DB_DATABASE'] ?? ($isLocal ? 'serveasy_v2' : '');
-            $dbUser = $_ENV['DB_USERNAME'] ?? ($isLocal ? 'root' : '');
-            $dbPass = $_ENV['DB_PASSWORD'] ?? '';
+            $dbHost = $vars['DB_HOST'] ?? $_ENV['DB_HOST'] ?? ($isLocal ? '127.0.0.1' : 'localhost');
+            $dbPort = $vars['DB_PORT'] ?? $_ENV['DB_PORT'] ?? '3306';
+            $dbName = $vars['DB_DATABASE'] ?? $vars['DB_NAME'] ?? $_ENV['DB_DATABASE'] ?? ($isLocal ? 'serveasy_v2' : '');
+            $dbUser = $vars['DB_USERNAME'] ?? $vars['DB_USER'] ?? $_ENV['DB_USERNAME'] ?? ($isLocal ? 'root' : '');
+            $dbPass = $vars['DB_PASSWORD'] ?? $vars['DB_PASS'] ?? $_ENV['DB_PASSWORD'] ?? '';
 
             if (empty($dbName) || empty($dbUser)) {
                 throw new \PDOException(
