@@ -39,7 +39,7 @@ if (!empty($verifyRes['status']) && $verifyRes['status'] === 'success' && !empty
 
     $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443);
     setcookie('access_token', $token, [
-        'expires'  => time() + 3600,
+        'expires'  => time() + 604800,
         'path'     => '/',
         'secure'   => $isSecure,
         'httponly' => true,
