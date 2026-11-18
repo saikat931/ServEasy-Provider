@@ -79,6 +79,8 @@ $created_at          = $initRes['created_at'] ?? 'N/A';
 $platformFeePercent  = (float)($initRes['platformFeePercent'] ?? 10.0);
 $platformFeeType     = (string)($initRes['platformFeeType'] ?? 'percentage');
 $platformFeeAmount   = (float)($initRes['platformFeeAmount'] ?? 10.0);
+$categories          = $initRes['categories'] ?? [];
+$provider_branches   = $initRes['provider_branches'] ?? [];
 ?>
 <!DOCTYPE html>
 <html lang="en">
