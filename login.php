@@ -36,8 +36,8 @@ if (isset($_SESSION['dealer'])) {
 <html lang="en">
 
 <head>
-  <script src="./config.js"></script>
-  <script src="./serveasy-api-bridge.js"></script>
+  <script src="./config.js?v=20261118v2"></script>
+  <script src="./serveasy-api-bridge.js?v=20261118v2"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Service Provider Login | ServEasy</title>

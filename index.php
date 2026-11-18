@@ -86,8 +86,8 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 <html lang="en">
 
 <head>
-  <script src="./config.js"></script>
-  <script src="./serveasy-api-bridge.js"></script>
+  <script src="./config.js?v=20261118v2"></script>
+  <script src="./serveasy-api-bridge.js?v=20261118v2"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>Service Provider Dashboard | ServEasy</title>
