@@ -79,14 +79,23 @@ class ApiBridge {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+
+        $headers = [
             'Accept: application/json',
             'User-Agent: ServEasy-Frontend-Bridge/1.0'
-        ]);
+        ];
+        if (!empty($_SESSION['access_token'])) {
+            $headers[] = 'Authorization: Bearer ' . $_SESSION['access_token'];
+            $headers[] = 'X-Auth-Token: ' . $_SESSION['access_token'];
+        }
+        if (!empty($_SESSION['dealer']['id'])) {
+            $headers[] = 'X-Provider-Id: ' . (int)$_SESSION['dealer']['id'];
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
         if (strtoupper($method) === 'POST') {
             curl_setopt($ch, CURLOPT_POST, true);
@@ -106,6 +115,91 @@ class ApiBridge {
             }
         }
         return null;
+    }
+
+    /**
+     * Transparently proxy an AJAX request (GET, POST, or multipart $_FILES) to the Central Backend API
+     */
+    public static function proxyRequest(string $endpoint): array {
+        $endpoint = ltrim($endpoint, '/');
+        $endpoint = preg_replace('/^(backend\/)?api\//i', '', $endpoint);
+        $url = self::getApiBaseUrl() . '/' . $endpoint;
+
+        if (!empty($_SERVER['QUERY_STRING'])) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . $_SERVER['QUERY_STRING'];
+        }
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+
+        $headers = [
+            'Accept: application/json',
+            'User-Agent: ServEasy-Provider-Proxy/1.0'
+        ];
+        if (!empty($_SESSION['access_token'])) {
+            $headers[] = 'Authorization: Bearer ' . $_SESSION['access_token'];
+            $headers[] = 'X-Auth-Token: ' . $_SESSION['access_token'];
+        }
+        if (!empty($_SESSION['dealer']['id'])) {
+            $headers[] = 'X-Provider-Id: ' . (int)$_SESSION['dealer']['id'];
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+        if ($method === 'POST') {
+            curl_setopt($ch, CURLOPT_POST, true);
+            if (!empty($_FILES)) {
+                $postFields = [];
+                $flatten = function ($arr, $prefix = '') use (&$flatten, &$postFields) {
+                    foreach ($arr as $k => $v) {
+                        $key = $prefix === '' ? $k : "{$prefix}[{$k}]";
+                        if (is_array($v)) {
+                            $flatten($v, $key);
+                        } else {
+                            $postFields[$key] = $v;
+                        }
+                    }
+                };
+                $flatten($_POST);
+                foreach ($_FILES as $fieldName => $fileInfo) {
+                    if (is_array($fileInfo['tmp_name'])) {
+                        foreach ($fileInfo['tmp_name'] as $idx => $tmpPath) {
+                            if (!empty($tmpPath) && is_uploaded_file($tmpPath)) {
+                                $postFields["{$fieldName}[{$idx}]"] = new \CURLFile(
+                                    $tmpPath,
+                                    $fileInfo['type'][$idx] ?? 'application/octet-stream',
+                                    $fileInfo['name'][$idx] ?? 'upload'
+                                );
+                            }
+                        }
+                    } elseif (!empty($fileInfo['tmp_name']) && is_uploaded_file($fileInfo['tmp_name'])) {
+                        $postFields[$fieldName] = new \CURLFile(
+                            $fileInfo['tmp_name'],
+                            $fileInfo['type'] ?? 'application/octet-stream',
+                            $fileInfo['name'] ?? 'upload'
+                        );
+                    }
+                }
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+            } else {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($_POST));
+            }
+        }
+
+        $body = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE) ?: 502;
+        $err  = curl_error($ch);
+        curl_close($ch);
+
+        return [
+            'http_code' => $code,
+            'body'      => $body !== false ? $body : json_encode(['status' => 'error', 'message' => 'Backend connection failed: ' . $err])
+        ];
     }
 
     /**

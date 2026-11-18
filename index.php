@@ -1,1667 +1,84 @@
 <?php
+/**
+ * ServEasy Service Provider Dashboard (Hostinger Multi-Domain Edition)
+ * Communicates securely with the Central Backend Engine (provider-dashboard-api.php) via JWT.
+ * Zero local MySQL credentials required on this standalone Provider domain!
+ */
 session_start();
-
-$dbConnPath = file_exists(__DIR__ . '/../backend/config/db_connection.php')
-    ? __DIR__ . '/../backend/config/db_connection.php'
-    : (file_exists(__DIR__ . '/../../backend/config/db_connection.php') 
-        ? __DIR__ . '/../../backend/config/db_connection.php' 
-        : (file_exists(__DIR__ . '/common/db_connection.php') ? __DIR__ . '/common/db_connection.php' : null));
-
-$bootstrapPath = file_exists(__DIR__ . '/../backend/api/bootstrap.php')
-    ? __DIR__ . '/../backend/api/bootstrap.php'
-    : (file_exists(__DIR__ . '/../../backend/api/bootstrap.php') 
-        ? __DIR__ . '/../../backend/api/bootstrap.php' 
-        : null);
-
-if ($dbConnPath) require_once $dbConnPath;
-if ($bootstrapPath) require_once $bootstrapPath;
-
 header('Content-Type: text/html; charset=utf-8');
 
 // Check if dealer is logged in
-if (!isset($_SESSION['dealer'])) {
+if (!isset($_SESSION['dealer']) || empty($_SESSION['dealer']['id'])) {
     header("Location: login.php");
     exit();
 }
 
+require_once __DIR__ . '/common/ApiBridge.php';
+
 $dealer = $_SESSION['dealer'];
-$dealer_id = $dealer['id'];
-
-try {
-    $pdo = Database::connect();
-
-    // Helper to calculate provider profile completion (Must have: Phone, Email, Address, ID Proof = 100%)
-    function getProviderProfileProgress($pdo, $dealer_id) {
-        $p_stmt = $pdo->prepare("
-            SELECT sp.*
-            FROM `serveasy-providers` sp
-            WHERE sp.id = ?
-        ");
-        $p_stmt->execute([$dealer_id]);
-        $prov = $p_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-
-        $spa_address = '';
-        if (!empty($prov['id'])) {
-            $spa_stmt = $pdo->prepare("SELECT address FROM `service_providers_address` WHERE provider_id = ? ORDER BY is_default DESC, id DESC LIMIT 1");
-            $spa_stmt->execute([$prov['id']]);
-            $spa_address = $spa_stmt->fetchColumn() ?: '';
-        }
-
-        $phone = trim($prov['phone'] ?? '');
-        $phone_digits = preg_replace('/[^0-9]/', '', $phone);
-        $has_phone = (!empty($phone_digits) && strlen($phone_digits) >= 10);
-
-        $email = trim($prov['email'] ?? '');
-        $has_email = (!empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL) !== false);
-
-        $address = trim($prov['location_address'] ?? ($spa_address ?: ''));
-        $has_address = (!empty($address) && strlen($address) >= 5);
-
-        $v_stmt = $pdo->prepare("
-            SELECT *
-            FROM `id_verifications`
-            WHERE user_id = ?
-            ORDER BY verification_id DESC
-            LIMIT 1
-        ");
-        $v_stmt->execute([$dealer_id]);
-        $ver = $v_stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-        if ($ver) {
-            $id_status = $ver['verification_status'] ?? 'under_review';
-        } elseif (($prov['verified_status'] ?? '') === 'approved') {
-            $id_status = 'approved';
-        } else {
-            $id_status = 'not_submitted';
-        }
-        $has_id_proof = ($id_status === 'approved');
-
-        $id_badge = 'Missing';
-        $id_badge_class = 'danger';
-        $id_action_label = 'Upload ID Proof';
-        if ($has_id_proof || $id_status === 'approved') {
-            $id_badge = 'Approved';
-            $id_badge_class = 'success';
-            $id_action_label = 'Verified';
-        } elseif ($id_status === 'pending' || $id_status === 'under_review') {
-            $id_badge = 'Under Review';
-            $id_badge_class = 'warning';
-            $id_action_label = 'View Status';
-        } elseif ($id_status === 'rejected') {
-            $id_badge = 'Rejected';
-            $id_badge_class = 'danger';
-            $id_action_label = 'Resubmit ID';
-        }
-
-        $pillars = [
-            'phone' => [
-                'name' => 'Phone Number',
-                'done' => $has_phone,
-                'val'  => $phone,
-                'percent' => 25,
-                'badge' => $has_phone ? 'Verified' : 'Missing',
-                'badge_class' => $has_phone ? 'success' : 'danger',
-                'action_tab' => 'profile',
-                'action_label' => $has_phone ? 'Edit' : 'Add Phone'
-            ],
-            'email' => [
-                'name' => 'Email Address',
-                'done' => $has_email,
-                'val'  => $email,
-                'percent' => 25,
-                'badge' => $has_email ? 'Verified' : 'Missing',
-                'badge_class' => $has_email ? 'success' : 'danger',
-                'action_tab' => 'profile',
-                'action_label' => $has_email ? 'Edit' : 'Add Email'
-            ],
-            'address' => [
-                'name' => 'Address Details',
-                'done' => $has_address,
-                'val'  => $address,
-                'percent' => 25,
-                'badge' => $has_address ? 'Completed' : 'Missing',
-                'badge_class' => $has_address ? 'success' : 'danger',
-                'action_tab' => 'profile',
-                'action_label' => $has_address ? 'Edit' : 'Add Address'
-            ],
-            'id_proof' => [
-                'name' => 'Government ID Proof',
-                'done' => $has_id_proof,
-                'val'  => $ver ? (($ver['id_type'] ?? 'ID') . ': ' . ($ver['id_number'] ?? '')) : '',
-                'status' => $id_status,
-                'percent' => 25,
-                'badge' => $id_badge,
-                'badge_class' => $id_badge_class,
-                'action_tab' => 'verification',
-                'action_label' => $id_action_label
-            ],
-        ];
-
-        $total_percent = 0;
-        $missing_items = [];
-        foreach ($pillars as $key => $p) {
-            if ($p['done']) {
-                $total_percent += $p['percent'];
-            } else {
-                if ($key === 'id_proof') {
-                    if ($id_status === 'pending' || $id_status === 'under_review') {
-                        $missing_items[] = 'ID Proof (Admin Approval Pending)';
-                    } elseif ($id_status === 'rejected') {
-                        $missing_items[] = 'ID Proof (Rejected - Resubmit)';
-                    } else {
-                        $missing_items[] = 'Government ID Proof';
-                    }
-                } else {
-                    $missing_items[] = $p['name'];
-                }
-            }
-        }
-
-        return [
-            'percentage' => min(100, $total_percent),
-            'is_100'     => ($total_percent >= 100),
-            'pillars'    => $pillars,
-            'missing'    => $missing_items,
-            'phone'      => $phone,
-            'email'      => $email,
-            'address'    => $address,
-            'id_status'  => $id_status,
-            'ver_record' => $ver,
-            'prov_record' => $prov
-        ];
-    }
-
-    $profile_progress = getProviderProfileProgress($pdo, $dealer_id);
-    $ver_record = $profile_progress['ver_record'];
-    $prov_record = $profile_progress['prov_record'];
-    $verification_status = $profile_progress['id_status'];
-
-    // Query Dealer Registration Date from serveasy-providers
-    $user_stmt = $pdo->prepare("
-        SELECT created_at 
-        FROM `serveasy-providers` 
-        WHERE id = ?
-    ");
-    $user_stmt->execute([$dealer_id]);
-    $created_at = $user_stmt->fetchColumn() ?: 'N/A';
-
-    // Determine active tab from URL query parameter
-    $open_tab = $_GET['tab'] ?? '';
-    $valid_tabs = ['dashboard', 'products', 'orders', 'wallet', 'profile', 'verification'];
-    if (!in_array($open_tab, $valid_tabs)) {
-        $open_tab = 'dashboard';
-    }
-
-    // AJAX Handlers (Support both 'ajax_action' and 'action' request parameters)
-    $action = $_REQUEST['ajax_action'] ?? $_REQUEST['action'] ?? null;
-    if ($action !== null) {
-
-        if ($action === 'fetch_stats') {
-            $provider_id = (int)$dealer_id;
-
-            // Stats for provider
-            $total_services = $pdo->prepare("SELECT COUNT(*) FROM `serveasy-services` WHERE provider_id = ?");
-            $total_services->execute([$provider_id]);
-            $prod_count = (int)$total_services->fetchColumn();
-
-            // Bookings for provider
-            $total_bookings = $pdo->prepare("SELECT COUNT(*) FROM vehicle_wash WHERE provider_id = ?");
-            $total_bookings->execute([$provider_id]);
-            $order_count = (int)$total_bookings->fetchColumn();
-
-            // Total Sales
-            $total_sales = $pdo->prepare("SELECT SUM(total_amount) FROM vehicle_wash WHERE provider_id = ? AND LOWER(status) = 'completed'");
-            $total_sales->execute([$provider_id]);
-            $sales_amount = (float)($total_sales->fetchColumn() ?: 0);
-
-            // Recent live bookings for overview table (active / actionable bookings only; completed & cancelled/rejected orders live in My Bookings)
-            $recent_stmt = $pdo->prepare("
-                SELECT b.id, b.booking_number, b.schedule_date, b.schedule_time,
-                       b.total_amount, b.status, b.started_at, b.completed_at, b.created_at,
-                       s.name as service_name,
-                       su.full_name as customer_name
-                FROM vehicle_wash b
-                LEFT JOIN `serveasy-services` s ON b.service_id = s.id
-                LEFT JOIN site_user su ON b.customer_id = su.id
-                LEFT JOIN reviews r ON r.booking_id = b.id
-                WHERE b.provider_id = ? AND LOWER(b.status) NOT IN ('completed', 'cancelled', 'rejected')
-                ORDER BY b.id DESC LIMIT 5
-            ");
-            $recent_stmt->execute([$provider_id]);
-            $recent_bookings = $recent_stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            header('Content-Type: application/json');
-            echo json_encode([
-                'products'        => $prod_count,
-                'orders'          => $order_count,
-                'sales'           => number_format($sales_amount, 2),
-                'recent_bookings' => $recent_bookings
-            ]);
-            exit();
-        }
-
-        if ($action === 'fetch_products') {
-            try {
-                $pdo->exec("ALTER TABLE `serveasy-services` ADD COLUMN `service_mode` ENUM('online', 'offline', 'both') DEFAULT 'both'");
-            } catch (Exception $e) { }
-
-            $provider_id = (int)$dealer_id;
-
-            $stmt = $pdo->prepare("SELECT s.id, s.name, s.description, s.works_list, s.base_price as price, s.duration_minutes as qty_in_stock, sub.name as category_name, s.is_active, s.approval_status, s.service_mode, s.service_range_km FROM `serveasy-services` s LEFT JOIN `serveasy-subcategories` sub ON s.subcategory_id = sub.id WHERE s.provider_id = ? ORDER BY s.id DESC");
-            $stmt->execute([$provider_id]);
-            $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $bStmt = $pdo->prepare("SELECT b.branch_name FROM `serveasy-provider-branches` b WHERE b.provider_id = ?");
-            $bStmt->execute([$provider_id]);
-            $branches = $bStmt->fetchAll(PDO::FETCH_COLUMN);
-            $branchList = !empty($branches) ? implode(', ', $branches) : '';
-            foreach ($products as &$product) {
-                $product['branches'] = $branchList;
-            }
-
-            header('Content-Type: application/json');
-            echo json_encode($products);
-            exit();
-        }
-
-        if ($action === 'fetch_orders') {
-            $provider_id = (int)$dealer_id;
-
-            // Join customer info — prefer site_user name, fall back to users table
-            $stmt = $pdo->prepare("
-                SELECT b.id, b.booking_number,
-                       b.schedule_date as order_date, b.schedule_time,
-                       b.total_amount as order_total, b.status as status_name,
-                       b.started_at, b.completed_at, b.created_at,
-                       b.payment_method, b.payment_status,
-                       b.landmark, b.pincode, b.vehicle_type, b.vehicle_color,
-                       s.name as service_name, s.base_price as service_price,
-                       pkg.name as package_name, pkg.price as package_price,
-                       su.full_name as customer_name,
-                       su.phone_number as customer_phone,
-                       su.email_address as customer_email,
-                       b.vehicle_brand, b.vehicle_model, b.vehicle_reg_no,
-                       b.address, b.location_type, b.extras
-                FROM vehicle_wash b
-                JOIN `serveasy-services` s ON b.service_id = s.id
-                LEFT JOIN `serveasy-service_packages` pkg ON b.package_id = pkg.id
-                LEFT JOIN site_user su ON b.customer_id = su.id
-                LEFT JOIN reviews r ON r.booking_id = b.id
-                WHERE b.provider_id = ?
-                ORDER BY 
-                    CASE LOWER(b.status)
-                        WHEN 'in_progress' THEN 1
-                        WHEN 'pending' THEN 2
-                        WHEN 'accepted' THEN 3
-                        WHEN 'completed' THEN 4
-                        WHEN 'cancelled' THEN 5
-                        WHEN 'rejected' THEN 6
-                        ELSE 7
-                    END ASC,
-                    b.id DESC
-            ");
-            $stmt->execute([$provider_id]);
-            $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            header('Content-Type: application/json');
-            echo json_encode($orders);
-            exit();
-        }
-
-        if ($action === 'fetch_profile') {
-            // Fetch account info strictly from serveasy-providers & serveasy-company
-            $stmt = $pdo->prepare("
-                SELECT
-                    sp.full_name,
-                    sp.email,
-                    sp.phone AS phone_number,
-                    COALESCE(c.company_name, '') AS company_name,
-                    sp.verified_status,
-                    sp.is_active
-                FROM `serveasy-providers` sp
-                LEFT JOIN `serveasy-company` c ON c.provider_id = sp.id
-                WHERE sp.id = ?
-            ");
-            $stmt->execute([$dealer_id]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            $profile = null;
-            if ($row) {
-                $profile = [
-                    'username'        => $row['email'] ?: $row['phone_number'],
-                    'full_name'       => $row['full_name'] ?: 'Service Provider',
-                    'email'           => $row['email'],
-                    'phone_number'    => $row['phone_number'],
-                    'company_name'    => $row['company_name'] ?? '',
-                    'verified_status' => $row['verified_status'] ?? 'pending',
-                    'status'          => $row['is_active'] ? 'active' : 'inactive',
-                ];
-            }
-
-            header('Content-Type: application/json');
-            echo json_encode($profile);
-            exit();
-        }
-
-        if ($action === 'fetch_categories') {
-            $stmt = $pdo->query("SELECT id, name as category_name FROM `serveasy-subcategories` ORDER BY name ASC");
-            $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            header('Content-Type: application/json');
-            echo json_encode($categories);
-            exit();
-        }
-
-        if ($action === 'fetch_profile_progress') {
-            $progress = getProviderProfileProgress($pdo, $dealer_id);
-            header('Content-Type: application/json');
-            echo json_encode([
-                'status'     => 'success',
-                'data'       => $progress,
-                'percentage' => $progress['percentage'],
-                'is_100'     => $progress['is_100'],
-                'pillars'    => $progress['pillars'],
-                'missing'    => $progress['missing']
-            ]);
-            exit();
-        }
-
-        if ($action === 'add_product') {
-            $progress = getProviderProfileProgress($pdo, $dealer_id);
-            if (!$progress['is_100']) {
-                header('Content-Type: application/json');
-                echo json_encode([
-                    'status' => 'error',
-                    'message' => 'Profile must be 100% complete and Government ID Proof must be APPROVED by Admin/Super Admin before adding services. Currently ' . $progress['percentage'] . '% complete. Missing / Incomplete: ' . implode(', ', $progress['missing'])
-                ]);
-                exit();
-            }
-
-            $name = $_POST['name'] ?? '';
-            $description = $_POST['description'] ?? '';
-            $category_id = (int)($_POST['category_id'] ?? 0);
-            $price = (float)($_POST['price'] ?? 0.00);
-            $qty_in_stock = (int)($_POST['qty_in_stock'] ?? 60); // duration in minutes
-            $service_mode = $_POST['service_mode'] ?? 'offline';
-            if (in_array($category_id, [1, 2, 41]) || stripos($name, 'wash') !== false) {
-                $service_mode = 'offline';
-            }
-            $sku = $_POST['sku'] ?? '';
-            $service_range_km = (float)($_POST['service_range_km'] ?? 10.00);
-
-            if (empty($name) || empty($description) || !$category_id) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Please fill in all required fields.']);
-                exit();
-            }
-
-            $provider_id = (int)$dealer_id;
-
-            $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $name)));
-
-            // Process works list / inclusions
-            $raw_works = $_POST['works_list'] ?? '';
-            $works_list_arr = [];
-            if (!empty($raw_works)) {
-                $lines = preg_split('/[\r\n,]+/', $raw_works);
-                foreach ($lines as $line) {
-                    $trimmed = trim($line);
-                    if ($trimmed !== '') {
-                        $works_list_arr[] = $trimmed;
-                    }
-                }
-            }
-            $works_list_json = !empty($works_list_arr) ? json_encode($works_list_arr, JSON_UNESCAPED_UNICODE) : null;
-
-            try {
-                $pdo->beginTransaction();
-
-                // Insert into services table
-                $stmt = $pdo->prepare("
-                    INSERT INTO `serveasy-services` (provider_id, subcategory_id, name, slug, description, works_list, base_price, duration_minutes, is_active, approval_status, service_mode, service_range_km)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?)
-                ");
-                $stmt->execute([
-                    $provider_id,
-                    $category_id,
-                    $name,
-                    $slug,
-                    $description,
-                    $works_list_json,
-                    $price,
-                    $qty_in_stock,
-                    $service_mode,
-                    $service_range_km
-                ]);
-                $service_id = $pdo->lastInsertId();
-
-                // Add addons
-                $addon_names = $_POST['addon_name'] ?? [];
-                $addon_prices = $_POST['addon_price'] ?? [];
-                if (!empty($addon_names) && is_array($addon_names)) {
-                    $addonStmt = $pdo->prepare("INSERT INTO `serveasy-service_addons` (service_id, name, price) VALUES (?, ?, ?)");
-                    for ($i = 0; $i < count($addon_names); $i++) {
-                        $a_name = trim($addon_names[$i]);
-                        $a_price = (float)($addon_prices[$i] ?? 0.00);
-                        if ($a_name !== '') {
-                            $addonStmt->execute([$service_id, $a_name, $a_price]);
-                        }
-                    }
-                }
-
-                // Add default placeholder service image
-                $stmtImg = $pdo->prepare("
-                    INSERT INTO `serveasy-service_images` (service_id, image_url, is_primary)
-                    VALUES (?, './assets/images/service-placeholder.jpg', 1)
-                ");
-                $stmtImg->execute([$service_id]);
-
-                $pdo->commit();
-
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success', 'message' => 'Service submitted successfully! It is pending approval by Admin or Super Admin and will go LIVE once accepted.']);
-                exit();
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-                exit();
-            }
-        }
-
-        if ($action === 'fetch_product') {
-            $id = (int)$_GET['id'];
-            $provider_id = (int)$dealer_id;
-
-            $stmt = $pdo->prepare("SELECT s.id, s.name, s.description, s.works_list, s.base_price as price, s.duration_minutes as qty_in_stock, s.subcategory_id as category_id, s.service_mode, s.service_range_km FROM `serveasy-services` s WHERE s.id = ? AND s.provider_id = ? LIMIT 1");
-            $stmt->execute([$id, $provider_id]);
-            $product = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($product) {
-                $product['branch_ids'] = [];
-
-                // Fetch addons
-                $addonStmt = $pdo->prepare("SELECT id, name, price FROM `serveasy-service_addons` WHERE service_id = ? ORDER BY id ASC");
-                $addonStmt->execute([$id]);
-                $product['addons'] = $addonStmt->fetchAll(PDO::FETCH_ASSOC);
-                
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success', 'data' => $product]);
-            } else {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Service not found.']);
-            }
-            exit();
-        }
-
-        if ($action === 'edit_product') {
-            $id = (int)($_POST['id'] ?? 0);
-            $name = $_POST['name'] ?? '';
-            $description = $_POST['description'] ?? '';
-            $category_id = (int)($_POST['category_id'] ?? 0);
-            $price = (float)($_POST['price'] ?? 0.00);
-            $qty_in_stock = (int)($_POST['qty_in_stock'] ?? 60);
-            $service_mode = $_POST['service_mode'] ?? 'offline';
-            if (in_array($category_id, [1, 2, 41]) || stripos($name, 'wash') !== false) {
-                $service_mode = 'offline';
-            }
-            $service_range_km = (float)($_POST['service_range_km'] ?? 10.00);
-
-            if (empty($name) || empty($description) || !$category_id || !$id) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Please fill in all required fields.']);
-                exit();
-            }
-
-            $provider_id = (int)$dealer_id;
-            $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $name)));
-
-            // Process works list / inclusions
-            $raw_works = $_POST['works_list'] ?? '';
-            $works_list_arr = [];
-            if (!empty($raw_works)) {
-                $lines = preg_split('/[\r\n,]+/', $raw_works);
-                foreach ($lines as $line) {
-                    $trimmed = trim($line);
-                    if ($trimmed !== '') {
-                        $works_list_arr[] = $trimmed;
-                    }
-                }
-            }
-            $works_list_json = !empty($works_list_arr) ? json_encode($works_list_arr, JSON_UNESCAPED_UNICODE) : null;
-
-            try {
-                $pdo->beginTransaction();
-                $stmt = $pdo->prepare("
-                    UPDATE `serveasy-services`
-                    SET subcategory_id = ?, name = ?, slug = ?, description = ?, works_list = ?, base_price = ?, duration_minutes = ?, service_mode = ?, service_range_km = ?
-                    WHERE id = ? AND provider_id = ?
-                ");
-                $stmt->execute([$category_id, $name, $slug, $description, $works_list_json, $price, $qty_in_stock, $service_mode, $service_range_km, $id, $provider_id]);
-
-                // Update addons
-                $pdo->prepare("DELETE FROM `serveasy-service_addons` WHERE service_id = ?")->execute([$id]);
-                $addon_names = $_POST['addon_name'] ?? [];
-                $addon_prices = $_POST['addon_price'] ?? [];
-                if (!empty($addon_names) && is_array($addon_names)) {
-                    $addonStmt = $pdo->prepare("INSERT INTO `serveasy-service_addons` (service_id, name, price) VALUES (?, ?, ?)");
-                    for ($i = 0; $i < count($addon_names); $i++) {
-                        $a_name = trim($addon_names[$i]);
-                        $a_price = (float)($addon_prices[$i] ?? 0.00);
-                        if ($a_name !== '') {
-                            $addonStmt->execute([$id, $a_name, $a_price]);
-                        }
-                    }
-                }
-
-                $pdo->commit();
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success', 'message' => 'Service updated successfully!']);
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-            }
-            exit();
-        }
-
-        if ($action === 'delete_product') {
-            $id = (int)($_POST['id'] ?? 0);
-            $provider_id = (int)$dealer_id;
-
-            try {
-                $pdo->prepare("DELETE FROM `serveasy-service_images` WHERE service_id = ?")->execute([$id]);
-                $stmt = $pdo->prepare("DELETE FROM `serveasy-services` WHERE id = ? AND provider_id = ?");
-                $stmt->execute([$id, $provider_id]);
-                
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success', 'message' => 'Service deleted successfully!']);
-            } catch (Exception $e) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-            }
-            exit();
-        }
-
-        if ($action === 'toggle_service_mode') {
-            $id = (int)$_POST['id'];
-            $service_mode = $_POST['service_mode'];
-            $provider_id = (int)$dealer_id;
-
-            $stmt = $pdo->prepare("UPDATE `serveasy-services` SET service_mode = ? WHERE id = ? AND provider_id = ?");
-            if ($stmt->execute([$service_mode, $id, $provider_id])) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success']);
-            } else {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Failed to toggle mode']);
-            }
-            exit();
-        }
-
-        if ($action === 'toggle_product_status') {
-            $id = (int)$_POST['id'];
-            $is_active = (int)$_POST['is_active'];
-            $provider_id = (int)$dealer_id;
-
-            // Check if service is approved before allowing activation
-            $check_stmt = $pdo->prepare("SELECT approval_status FROM `serveasy-services` WHERE id = ? AND provider_id = ?");
-            $check_stmt->execute([$id, $provider_id]);
-            $app_status = $check_stmt->fetchColumn();
-
-            if ($is_active == 1 && $app_status !== 'approved') {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'This service cannot be made online because it has not yet been accepted by an Admin or Super Admin.']);
-                exit();
-            }
-
-            $stmt = $pdo->prepare("UPDATE `serveasy-services` SET is_active = ? WHERE id = ? AND provider_id = ?");
-            $stmt->execute([$is_active, $id, $provider_id]);
-            
-            header('Content-Type: application/json');
-            echo json_encode(['status' => 'success', 'message' => 'Status updated successfully!']);
-            exit();
-        }
-
-        if ($action === 'update_booking_status' || $action === 'cancel_booking' || $action === 'cancel' || $action === 'reject_booking') {
-            $id = (int)($_POST['id'] ?? ($_GET['id'] ?? 0));
-            $status = $_POST['status'] ?? ($_GET['status'] ?? '');
-            if (empty($status)) {
-                if ($action === 'cancel' || $action === 'cancel_booking') {
-                    $status = 'cancelled';
-                } elseif ($action === 'reject_booking') {
-                    $status = 'rejected';
-                }
-            }
-            $reason = $_POST['reason'] ?? ($_POST['remarks'] ?? ($_GET['reason'] ?? null));
-            try {
-                if (class_exists('\App\Services\BookingService')) {
-                    $bookingService = new \App\Services\BookingService();
-                    $bookingService->updateBookingStatus($id, $status, (int)$dealer_id, $reason);
-                } else {
-                    // Standalone Hostinger domain PDO fallback
-                    $allowed = ['pending', 'accepted', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected'];
-                    $stLower = strtolower(trim($status));
-                    if (!in_array($stLower, $allowed, true)) {
-                        throw new \Exception("Invalid booking status: " . $status);
-                    }
-                    $chk = $pdo->prepare("SELECT id, status FROM vehicle_wash WHERE id = ? AND provider_id = ? LIMIT 1");
-                    $chk->execute([$id, (int)$dealer_id]);
-                    if (!$chk->fetch()) {
-                        throw new \Exception("Booking not found or unauthorized.");
-                    }
-                    $extraSql = "";
-                    $params = [$stLower];
-                    if ($stLower === 'in_progress') {
-                        $extraSql .= ", started_at = COALESCE(started_at, NOW())";
-                    } elseif ($stLower === 'completed') {
-                        $extraSql .= ", completed_at = COALESCE(completed_at, NOW())";
-                    }
-                    if (!empty($reason) && in_array($stLower, ['cancelled', 'rejected'], true)) {
-                        $extraSql .= ", cancellation_reason = ?";
-                        $params[] = $reason;
-                    }
-                    $params[] = $id;
-                    $params[] = (int)$dealer_id;
-                    try {
-                        $pdo->prepare("UPDATE vehicle_wash SET status = ?{$extraSql} WHERE id = ? AND provider_id = ?")->execute($params);
-                    } catch (\Throwable $colErr) {
-                        $pdo->prepare("UPDATE vehicle_wash SET status = ? WHERE id = ? AND provider_id = ?")->execute([$stLower, $id, (int)$dealer_id]);
-                    }
-                }
-
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success', 'message' => 'Booking status updated successfully!']);
-            } catch (\Throwable $e) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
-            }
-            exit();
-        }
-
-                if ($action === 'mark_booking_paid') {
-            $id = (int)($_POST['id'] ?? 0);
-            $provider_id = (int)$dealer_id;
-
-            try {
-                $bStmt = $pdo->prepare("SELECT id, booking_number, customer_id, provider_id, total_amount, status, payment_status FROM vehicle_wash WHERE id = ? AND provider_id = ? LIMIT 1");
-                $bStmt->execute([$id, $provider_id]);
-                $booking = $bStmt->fetch(PDO::FETCH_ASSOC);
-
-                if (!$booking) {
-                    throw new Exception("Booking not found or access denied.");
-                }
-
-                if (strtoupper($booking['payment_status'] ?? '') === 'PAID') {
-                    throw new Exception("Booking is already marked as PAID.");
-                }
-
-                $pdo->beginTransaction();
-
-                // 1. Update payment status to PAID
-                $upStmt = $pdo->prepare("UPDATE vehicle_wash SET payment_status = 'PAID', payment_method = 'COD' WHERE id = ?");
-                $upStmt->execute([$id]);
-
-                // 2. Record payment row in serveasy.payments
-                $stmtPay = $pdo->prepare("
-                    INSERT INTO `payments` (booking_id, amount, status, payment_method, gateway_transaction_id) 
-                    VALUES (:booking_id, :amount, 'completed', 'COD', :tx_id)
-                ");
-                $stmtPay->execute([
-                    'booking_id' => $id,
-                    'amount' => (float)$booking['total_amount'],
-                    'tx_id' => 'COD-CASH-' . strtoupper(uniqid())
-                ]);
-
-                // 3. Record ₹20 site service charge for provider
-                $serviceChargeAmount = 20.00;
-                $stmtCharge = $pdo->prepare("
-                    INSERT INTO `provider_service_charges` 
-                        (provider_id, booking_id, booking_number, amount, status, created_at)
-                    VALUES 
-                        (:provider_id, :booking_id, :booking_number, :amount, 'PENDING', NOW())
-                ");
-                $stmtCharge->execute([
-                    'provider_id' => $provider_id,
-                    'booking_id' => $id,
-                    'booking_number' => $booking['booking_number'],
-                    'amount' => $serviceChargeAmount
-                ]);
-
-                // 4. Update provider_wallets service_charge_due
-                $walletStmt = $pdo->prepare("
-                    INSERT INTO `provider_wallets` (provider_id, service_charge_due)
-                    VALUES (:pid, :charge)
-                    ON DUPLICATE KEY UPDATE service_charge_due = service_charge_due + :charge_dup
-                ");
-                $walletStmt->execute([
-                    'pid' => $provider_id,
-                    'charge' => $serviceChargeAmount,
-                    'charge_dup' => $serviceChargeAmount
-                ]);
-
-                // 5. SSE transactional outbox push
-                try {
-                    $eventRepo = new \App\Repositories\EventRepository();
-                    $eventPayload = [
-                        'booking_id' => $id,
-                        'booking_number' => $booking['booking_number'],
-                        'status' => $booking['status'],
-                        'payment_status' => 'PAID',
-                        'payment_method' => 'COD',
-                        'amount' => (float)$booking['total_amount'],
-                        'updated_at' => date('Y-m-d H:i:s')
-                    ];
-                    if (!empty($booking['customer_id'])) {
-                        $eventRepo->recordEvent('booking.updated', $id, 'CUSTOMER', (int)$booking['customer_id'], $eventPayload);
-                    }
-                    $eventRepo->recordEvent('booking.updated', $id, 'PROVIDER', $provider_id, $eventPayload);
-                } catch (\Throwable $evEx) {
-                    error_log("Failed to dispatch SSE event: " . $evEx->getMessage());
-                }
-
-                $pdo->commit();
-
-                header('Content-Type: application/json');
-                echo json_encode([
-                    'status' => 'success',
-                    'message' => "Payment marked as PAID! ₹{$serviceChargeAmount} site service charge has been recorded to your account.",
-                    'service_charge_due' => $serviceChargeAmount
-                ]);
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
-            }
-            exit();
-        }
-
-        if ($action === 'pay_service_charges') {
-            $provider_id = (int)$dealer_id;
-            $method = strtolower($_POST['payment_method'] ?? 'wallet');
-
-            try {
-                $stmtDue = $pdo->prepare("
-                    SELECT COALESCE(SUM(amount), 0) AS total_due 
-                    FROM `provider_service_charges` 
-                    WHERE provider_id = ? AND status = 'PENDING'
-                ");
-                $stmtDue->execute([$provider_id]);
-                $totalDue = (float)$stmtDue->fetchColumn();
-
-                if ($totalDue <= 0) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['status' => 'success', 'message' => 'No outstanding site service charge dues!']);
-                    exit();
-                }
-
-                $pdo->beginTransaction();
-
-                if ($method === 'wallet') {
-                    $stmtWal = $pdo->prepare("SELECT available_balance FROM `provider_wallets` WHERE provider_id = ?");
-                    $stmtWal->execute([$provider_id]);
-                    $availBal = (float)$stmtWal->fetchColumn();
-
-                    if ($availBal < $totalDue) {
-                        $pdo->rollBack();
-                        header('Content-Type: application/json');
-                        echo json_encode(['status' => 'error', 'message' => "Insufficient wallet balance (₹" . number_format($availBal, 2) . ") to clear ₹" . number_format($totalDue, 2) . " dues. Please choose Online Payment."]);
-                        exit();
-                    }
-
-                    $deductStmt = $pdo->prepare("
-                        UPDATE `provider_wallets`
-                        SET available_balance = GREATEST(0, available_balance - :dues),
-                            service_charge_due = GREATEST(0, service_charge_due - :dues_dup)
-                        WHERE provider_id = :pid
-                    ");
-                    $deductStmt->execute([
-                        'dues' => $totalDue,
-                        'dues_dup' => $totalDue,
-                        'pid' => $provider_id
-                    ]);
-                } else {
-                    $clearWalStmt = $pdo->prepare("
-                        UPDATE `provider_wallets`
-                        SET service_charge_due = 0.00
-                        WHERE provider_id = ?
-                    ");
-                    $clearWalStmt->execute([$provider_id]);
-                }
-
-                $markStmt = $pdo->prepare("
-                    UPDATE `provider_service_charges`
-                    SET status = 'PAID', paid_at = NOW(), payment_method = :pm
-                    WHERE provider_id = :pid AND status = 'PENDING'
-                ");
-                $markStmt->execute([
-                    'pm' => strtoupper($method),
-                    'pid' => $provider_id
-                ]);
-
-                $pdo->commit();
-
-                header('Content-Type: application/json');
-                echo json_encode([
-                    'status' => 'success',
-                    'message' => "Site service charge of ₹" . number_format($totalDue, 2) . " cleared successfully! You can now accept new bookings.",
-                    'cleared_amount' => $totalDue
-                ]);
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
-            }
-            exit();
-        }
-
-        if ($action === 'get_service_charges') {
-            $provider_id = (int)$dealer_id;
-            try {
-                $stmt = $pdo->prepare("
-                    SELECT id, booking_id, booking_number, amount, status, paid_at, payment_method, created_at
-                    FROM `provider_service_charges`
-                    WHERE provider_id = ?
-                    ORDER BY id DESC
-                ");
-                $stmt->execute([$provider_id]);
-                $charges = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-                $stmtDue = $pdo->prepare("
-                    SELECT COALESCE(SUM(amount), 0) AS total_due 
-                    FROM `provider_service_charges` 
-                    WHERE provider_id = ? AND status = 'PENDING'
-                ");
-                $stmtDue->execute([$provider_id]);
-                $totalDue = (float)$stmtDue->fetchColumn();
-
-                $stmtWal = $pdo->prepare("SELECT available_balance FROM `provider_wallets` WHERE provider_id = ?");
-                $stmtWal->execute([$provider_id]);
-                $availBal = (float)$stmtWal->fetchColumn();
-
-                header('Content-Type: application/json');
-                echo json_encode([
-                    'status' => 'success',
-                    'total_due' => $totalDue,
-                    'available_balance' => $availBal,
-                    'can_accept_bookings' => ($totalDue <= 0),
-                    'charges' => $charges
-                ]);
-            } catch (Exception $e) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
-            }
-            exit();
-        }
-
-        if ($action === 'fetch_booking_details') {
-            $id = (int)($_GET['id'] ?? 0);
-            $provider_id = (int)$dealer_id;
-
-            $stmt = $pdo->prepare("
-                SELECT b.id, b.booking_number, b.customer_id, b.service_id, b.package_id, b.provider_id,
-                       b.schedule_date, b.schedule_time, b.address, b.total_amount, b.status, b.notes,
-                       b.vehicle_type, b.vehicle_brand, b.vehicle_model, b.vehicle_reg_no, b.vehicle_color,
-                       b.location_type, b.landmark, b.pincode, b.extras, b.payment_method, b.payment_status,
-                       b.started_at, b.completed_at, b.created_at, b.updated_at,
-                       ST_X(b.location) AS latitude, ST_Y(b.location) AS longitude,
-                       s.name as service_name, s.base_price as service_price, s.duration_minutes as service_duration,
-                       pkg.name as package_name, pkg.price as package_price,
-                       su.full_name as customer_name, su.email_address as customer_email, su.phone_number as customer_phone,
-                       r.rating as review_rating, r.comment as review_comment
-                FROM vehicle_wash b
-                LEFT JOIN `serveasy-services` s ON b.service_id = s.id
-                LEFT JOIN `serveasy-service_packages` pkg ON b.package_id = pkg.id
-                LEFT JOIN site_user su ON b.customer_id = su.id
-                LEFT JOIN reviews r ON r.booking_id = b.id
-                WHERE b.id = ? AND b.provider_id = ?
-                LIMIT 1
-            ");
-            $stmt->execute([$id, $provider_id]);
-            $booking = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($booking) {
-                $bLat = (float)($booking['latitude'] ?? 0);
-                $bLng = (float)($booking['longitude'] ?? 0);
-                if ($bLat == 0.0 && $bLng == 0.0 && !empty($booking['customer_id'])) {
-                    try {
-                        $cAddrStmt = $pdo->prepare("
-                            SELECT latitude, longitude FROM `user_addresses`
-                            WHERE user_id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != 0
-                            ORDER BY is_default DESC, updated_at DESC LIMIT 1
-                        ");
-                        $cAddrStmt->execute([$booking['customer_id']]);
-                        $cAddr = $cAddrStmt->fetch(PDO::FETCH_ASSOC);
-                        if ($cAddr && !empty($cAddr['latitude'])) {
-                            $booking['latitude'] = (float)$cAddr['latitude'];
-                            $booking['longitude'] = (float)$cAddr['longitude'];
-                        }
-                    } catch (\Throwable $t) {}
-                }
-            }
-
-            if (!$booking) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Booking not found.']);
-                exit();
-            }
-
-            // Also fetch status history
-            $histStmt = $pdo->prepare("
-                SELECT h.id, h.booking_id, h.status, h.remarks, h.changed_by, h.created_at,
-                       su.full_name as changed_by_name
-                FROM booking_status_history h
-                LEFT JOIN site_user su ON h.changed_by = su.id
-                WHERE h.booking_id = ?
-                ORDER BY h.id ASC
-            ");
-            $histStmt->execute([$id]);
-            $booking['status_history'] = $histStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            header('Content-Type: application/json');
-            echo json_encode(['status' => 'success', 'data' => $booking]);
-            exit();
-        }
-
-        if ($action === 'delete_booking') {
-            $id = (int)($_POST['id'] ?? 0);
-            $provider_id = (int)$dealer_id;
-
-            $stmt = $pdo->prepare("SELECT id, status FROM vehicle_wash WHERE id = ? AND provider_id = ? LIMIT 1");
-            $stmt->execute([$id, $provider_id]);
-            $booking = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$booking) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Booking not found.']);
-                exit();
-            }
-
-            $st = strtolower($booking['status']);
-            if (!in_array($st, ['completed', 'rejected', 'cancelled'])) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Only completed or rejected bookings can be deleted.']);
-                exit();
-            }
-
-            try {
-                $pdo->beginTransaction();
-
-                // Delete history
-                $pdo->prepare("DELETE FROM booking_status_history WHERE booking_id = ?")->execute([$id]);
-
-                // Delete reviews
-                $pdo->prepare("DELETE FROM reviews WHERE booking_id = ?")->execute([$id]);
-
-                // Delete payments if any
-                try {
-                    $pdo->prepare("DELETE FROM payments WHERE booking_id = ?")->execute([$id]);
-                } catch (Exception $pe) { }
-
-                // Delete booking
-                $pdo->prepare("DELETE FROM vehicle_wash WHERE id = ? AND provider_id = ?")->execute([$id, $provider_id]);
-
-                $pdo->commit();
-
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success', 'message' => 'Booking deleted successfully!']);
-                exit();
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-                exit();
-            }
-        }
-        if ($action === 'submit_verification') {
-            $id_type = trim($_POST['id_type'] ?? '');
-            $id_number = trim($_POST['id_number'] ?? '');
-            $extra_document_type = trim($_POST['extra_document_type'] ?? '');
-            $extra_document_number = trim($_POST['extra_document_number'] ?? '');
-
-            if (empty($id_type) || empty($id_number)) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Primary ID Type and Document Number are required.']);
-                exit();
-            }
-
-            if (empty($extra_document_type) || empty($extra_document_number)) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Extra ID Document Type and Document Number are required.']);
-                exit();
-            }
-
-            $front_image = null;
-            $back_image = null;
-            $selfie_image = null;
-            $extra_image = null;
-
-            $upload_dir = is_dir(__DIR__ . '/../uploads')
-                ? __DIR__ . '/../uploads/verifications/dealer/'
-                : __DIR__ . '/uploads/verifications/dealer/';
-            if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
-            }
-
-            if (isset($_FILES['id_front_image']) && $_FILES['id_front_image']['error'] == 0) {
-                $ext = pathinfo($_FILES['id_front_image']['name'], PATHINFO_EXTENSION);
-                $filename = 'front_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
-                if (move_uploaded_file($_FILES['id_front_image']['tmp_name'], $upload_dir . $filename)) {
-                    $front_image = 'uploads/verifications/dealer/' . $filename;
-                }
-            }
-
-            if (isset($_FILES['id_back_image']) && $_FILES['id_back_image']['error'] == 0) {
-                $ext = pathinfo($_FILES['id_back_image']['name'], PATHINFO_EXTENSION);
-                $filename = 'back_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
-                if (move_uploaded_file($_FILES['id_back_image']['tmp_name'], $upload_dir . $filename)) {
-                    $back_image = 'uploads/verifications/dealer/' . $filename;
-                }
-            }
-
-            if (isset($_FILES['selfie_image']) && $_FILES['selfie_image']['error'] == 0) {
-                $ext = pathinfo($_FILES['selfie_image']['name'], PATHINFO_EXTENSION);
-                $filename = 'selfie_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
-                if (move_uploaded_file($_FILES['selfie_image']['tmp_name'], $upload_dir . $filename)) {
-                    $selfie_image = 'uploads/verifications/dealer/' . $filename;
-                }
-            }
-
-            if (isset($_FILES['extra_document_image']) && $_FILES['extra_document_image']['error'] == 0) {
-                $ext = pathinfo($_FILES['extra_document_image']['name'], PATHINFO_EXTENSION);
-                $filename = 'extra_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
-                if (move_uploaded_file($_FILES['extra_document_image']['tmp_name'], $upload_dir . $filename)) {
-                    $extra_image = 'uploads/verifications/dealer/' . $filename;
-                }
-            }
-
-            if (!$front_image || !$back_image || !$selfie_image || !$extra_image) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'All 4 document uploads (Primary Front, Back, Selfie with ID, and Extra Document) are required.']);
-                exit();
-            }
-
-            $stmt = $pdo->prepare("
-                INSERT INTO `id_verifications` 
-                (user_id, id_type, id_number, id_front_image, id_back_image, selfie_image, extra_document_type, extra_document_number, extra_document_image, verification_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-            ");
-            $stmt->execute([
-                $dealer_id,
-                $id_type,
-                $id_number,
-                $front_image,
-                $back_image,
-                $selfie_image,
-                $extra_document_type,
-                $extra_document_number,
-                $extra_image
-            ]);
-
-            // Also update serveasy-providers status to under_review
-            $pdo->prepare("UPDATE `serveasy-providers` SET verified_status = 'under_review' WHERE id = ?")->execute([$dealer_id]);
-
-            $progress = getProviderProfileProgress($pdo, $dealer_id);
-            header('Content-Type: application/json');
-            echo json_encode(['status' => 'success', 'message' => 'Both Primary ID and Extra Document submitted successfully! Under review.', 'progress' => $progress]);
-            exit();
-        }
-
-        if ($action === 'fetch_provider_profile') {
-            // Fetch account info strictly from serveasy-providers & serveasy-company
-            $stmt = $pdo->prepare("
-                SELECT
-                    sp.id,
-                    sp.full_name,
-                    sp.email,
-                    sp.phone,
-                    COALESCE(c.company_name, '') AS company_name,
-                    sp.location_address,
-                    sp.latitude,
-                    sp.longitude,
-                    sp.service_range_km,
-                    sp.verified_status,
-                    sp.is_active,
-                    sp.created_at
-                FROM `serveasy-providers` sp
-                LEFT JOIN `serveasy-company` c ON c.provider_id = sp.id
-                WHERE sp.id = ?
-            ");
-            $stmt->execute([$dealer_id]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            // Fetch landmark and pincode from service_providers_address
-            $landmark = '';
-            $pincode  = '';
-            if ($row && !empty($row['id'])) {
-                try {
-                    $spa = $pdo->prepare("SELECT landmark, pincode FROM `service_providers_address` WHERE provider_id = ? ORDER BY is_default DESC, id DESC LIMIT 1");
-                    $spa->execute([$row['id']]);
-                    if ($spa_row = $spa->fetch(PDO::FETCH_ASSOC)) {
-                        $landmark = $spa_row['landmark'] ?? '';
-                        $pincode  = $spa_row['pincode'] ?? '';
-                    }
-                } catch (Exception $e) {}
-            }
-
-            $branches = [];
-            if ($row && !empty($row['id'])) {
-                $bstmt = $pdo->prepare("SELECT * FROM `serveasy-provider-branches` WHERE provider_id = ? ORDER BY id ASC");
-                $bstmt->execute([$row['id']]);
-                $branches = $bstmt->fetchAll(PDO::FETCH_ASSOC);
-            }
-
-            $progress = getProviderProfileProgress($pdo, $dealer_id);
-
-            $raw_name = trim($row['full_name'] ?? ($progress['prov_record']['su_name'] ?? ''));
-            $clean_name = ($raw_name === 'Service Provider') ? '' : $raw_name;
-
-            header('Content-Type: application/json');
-            echo json_encode([
-                'full_name'        => $clean_name,
-                'email'            => $row['email']            ?? ($progress['prov_record']['su_email'] ?? ''),
-                'phone'            => $row['phone']            ?? ($progress['prov_record']['su_phone'] ?? ''),
-                'company_name'     => $row['company_name']     ?? '',
-                'location_address' => $row['location_address'] ?? '',
-                'landmark'         => $landmark,
-                'pincode'          => $pincode,
-                'latitude'         => $row['latitude']         ?? '',
-                'longitude'        => $row['longitude']        ?? '',
-                'service_range_km' => $row['service_range_km'] ?? 10,
-                'verified_status'  => $row['verified_status']  ?? $progress['id_status'],
-                'status'           => ($row['is_active'] ?? 1) ? 'active' : 'inactive',
-                'branches'         => $branches,
-                'progress'         => $progress
-            ]);
-            exit();
-        }
-
-        if ($action === 'save_provider_profile') {
-            $company_name     = trim($_POST['company_name'] ?? '');
-            $full_name        = trim($_POST['full_name'] ?? '');
-            $email            = trim($_POST['email'] ?? '');
-            $phone            = trim($_POST['phone'] ?? '');
-            $location_address = trim($_POST['location_address'] ?? '');
-            $landmark         = trim($_POST['landmark'] ?? '');
-            $pincode          = trim($_POST['pincode'] ?? '');
-            $latitude         = !empty($_POST['latitude'])  ? (float)$_POST['latitude']  : null;
-            $longitude        = !empty($_POST['longitude']) ? (float)$_POST['longitude'] : null;
-            $service_range_km = max(1, min(500, (float)($_POST['service_range_km'] ?? 10)));
-
-            // Update serveasy-providers directly
-            $pdo->prepare("
-                UPDATE `serveasy-providers`
-                SET full_name = ?, email = ?, phone = ?, location_address = ?, latitude = ?, longitude = ?, service_range_km = ?
-                WHERE id = ?
-            ")->execute([$full_name, $email, $phone, $location_address, $latitude, $longitude, $service_range_km, $dealer_id]);
-
-            // Save company details in serveasy-company (connected via provider_id)
-            if ($company_name !== '') {
-                $compStmt = $pdo->prepare("SELECT id FROM `serveasy-company` WHERE provider_id = ? LIMIT 1");
-                $compStmt->execute([$dealer_id]);
-                if ($compStmt->fetchColumn()) {
-                    $pdo->prepare("UPDATE `serveasy-company` SET company_name = ? WHERE provider_id = ?")->execute([$company_name, $dealer_id]);
-                } else {
-                    $pdo->prepare("INSERT INTO `serveasy-company` (provider_id, company_name) VALUES (?, ?)")->execute([$dealer_id, $company_name]);
-                }
-            }
-
-            // Sync to service_providers_address if location_address provided
-            if ($location_address !== '') {
-                try {
-                    $prov_pk = $dealer_id;
-                    if ($prov_pk) {
-                        $chk_spa = $pdo->prepare("SELECT id FROM `service_providers_address` WHERE provider_id = ? AND is_default = 1");
-                        $chk_spa->execute([$prov_pk]);
-                        $spa_id = $chk_spa->fetchColumn();
-                        if ($spa_id) {
-                            $pdo->prepare("UPDATE `service_providers_address` SET address = ?, landmark = ?, pincode = ?, latitude = ?, longitude = ? WHERE id = ?")->execute([$location_address, $landmark, $pincode, $latitude, $longitude, $spa_id]);
-                        } else {
-                            $pdo->prepare("INSERT INTO `service_providers_address` (provider_id, label, address, landmark, pincode, latitude, longitude, is_default) VALUES (?, 'Primary Location', ?, ?, ?, ?, ?, 1)")->execute([$prov_pk, $location_address, $landmark, $pincode, $latitude, $longitude]);
-                        }
-                    }
-                } catch (Exception $e) {}
-            }
-
-            if ($full_name) {
-                $_SESSION['dealer']['name'] = $full_name;
-            }
-            if ($email) {
-                $_SESSION['dealer']['email'] = $email;
-            }
-            if ($phone) {
-                $_SESSION['dealer']['phone'] = $phone;
-            }
-
-            $progress = getProviderProfileProgress($pdo, $dealer_id);
-
-            header('Content-Type: application/json');
-            echo json_encode(['status' => 'success', 'message' => 'Profile saved successfully!', 'progress' => $progress, 'profile_progress' => $progress]);
-            exit();
-        }
-
-        if ($action === 'register_company') {
-            $company_name = trim($_POST['company_name'] ?? '');
-            if (empty($company_name)) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Company name is required.']);
-                exit();
-            }
-            if (strlen($company_name) < 2) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Company name must be at least 2 characters.']);
-                exit();
-            }
-
-            $compStmt = $pdo->prepare("SELECT id FROM `serveasy-company` WHERE provider_id = ? LIMIT 1");
-            $compStmt->execute([$dealer_id]);
-            $comp_id = $compStmt->fetchColumn();
-
-            if (!$comp_id) {
-                $pdo->prepare("INSERT INTO `serveasy-company` (provider_id, company_name) VALUES (?, ?)")->execute([$dealer_id, $company_name]);
-            } else {
-                $pdo->prepare("UPDATE `serveasy-company` SET company_name = ? WHERE provider_id = ?")->execute([$company_name, $dealer_id]);
-            }
-
-            header('Content-Type: application/json');
-            echo json_encode([
-                'status' => 'success',
-                'message' => 'Company registered successfully! You can now add branch locations.',
-                'company_name' => $company_name
-            ]);
-            exit();
-        }
-
-        if ($action === 'add_branch') {
-            $branch_name = trim($_POST['branch_name'] ?? '');
-            $address     = trim($_POST['address'] ?? '');
-            $phone       = trim($_POST['phone'] ?? '');
-            $latitude    = !empty($_POST['latitude'])  ? (float)$_POST['latitude']  : null;
-            $longitude   = !empty($_POST['longitude']) ? (float)$_POST['longitude'] : null;
-
-            if (empty($branch_name)) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Branch name is required.']);
-                exit();
-            }
-
-            // Check if provider has a registered company
-            $compStmt = $pdo->prepare("SELECT id, company_name FROM `serveasy-company` WHERE provider_id = ? LIMIT 1");
-            $compStmt->execute([$dealer_id]);
-            $compRow = $compStmt->fetch(PDO::FETCH_ASSOC);
-            $company_id = $compRow['id'] ?? null;
-            $company_name = trim($compRow['company_name'] ?? '');
-
-            if (empty($company_name) || !$company_id) {
-                header('Content-Type: application/json');
-                echo json_encode([
-                    'status' => 'error',
-                    'message' => 'Individual service providers cannot add branch locations. You must register a company first.',
-                    'requires_company' => true
-                ]);
-                exit();
-            }
-
-            $pdo->prepare("
-                INSERT INTO `serveasy-provider-branches` (provider_id, company_id, branch_name, address, latitude, longitude, phone)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ")->execute([$dealer_id, $company_id, $branch_name, $address, $latitude, $longitude, $phone]);
-
-            header('Content-Type: application/json');
-            echo json_encode(['status' => 'success', 'message' => 'Branch added successfully!']);
-            exit();
-        }
-
-
-        if ($action === 'fetch_wallet_data') {
-            $provider_id = (int)$dealer_id;
-
-            // 1. Fetch or initialize provider wallet
-            $wStmt = $pdo->prepare("SELECT * FROM `provider_wallets` WHERE provider_id = ? LIMIT 1");
-            $wStmt->execute([$provider_id]);
-            $wallet = $wStmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$wallet) {
-                $initStmt = $pdo->prepare("
-                    INSERT INTO `provider_wallets` 
-                    (provider_id, available_balance, pending_clearance, total_earned, total_withdrawn) 
-                    VALUES (?, 0.00, 0.00, 0.00, 0.00)
-                ");
-                $initStmt->execute([$provider_id]);
-                $wallet = [
-                    'provider_id' => $provider_id,
-                    'available_balance' => '0.00',
-                    'pending_clearance' => '0.00',
-                    'total_earned' => '0.00',
-                    'total_withdrawn' => '0.00'
-                ];
-            }
-
-            // 2. Fetch linked bank account
-            $bStmt = $pdo->prepare("
-                SELECT id, account_holder_name, account_number, ifsc_code, bank_name, upi_id, is_verified, updated_at
-                FROM `provider_bank_accounts` 
-                WHERE provider_id = ? 
-                ORDER BY id DESC LIMIT 1
-            ");
-            $bStmt->execute([$provider_id]);
-            $bank = $bStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-            // 3. Fetch transaction history
-            $tStmt = $pdo->prepare("
-                SELECT t.id, t.transaction_ref, t.booking_id, t.customer_id, t.gross_amount,
-                       t.gateway_fee, t.platform_commission, t.provider_net_amount,
-                       COALESCE(t.gateway_name, t.payment_mode, 'RAZORPAY') as payment_gateway,
-                       t.gateway_payment_id, t.status, t.failure_reason, t.created_at,
-                       b.booking_number,
-                       s.name as service_name,
-                       COALESCE(su.full_name, 'Customer') as customer_name,
-                       su.phone_number as customer_phone
-                FROM `transactions` t
-                LEFT JOIN vehicle_wash b ON t.booking_id = b.id
-                LEFT JOIN `serveasy-services` s ON b.service_id = s.id
-                LEFT JOIN site_user su ON t.customer_id = su.id
-                WHERE t.provider_id = ?
-                ORDER BY t.id DESC
-            ");
-            $tStmt->execute([$provider_id]);
-            $transactions = $tStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            // 4. Fetch payout requests
-            $pStmt = $pdo->prepare("
-                SELECT id, request_ref as payout_ref, amount, status, admin_notes, utr_number, processed_at, created_at
-                FROM `payout_requests`
-                WHERE provider_id = ?
-                ORDER BY id DESC
-            ");
-            $pStmt->execute([$provider_id]);
-            $payouts = $pStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-            // 5. Fetch platform fee settings for dynamic header and breakdown
-            $pfPercent = 10.0;
-            $pfType = 'percentage';
-            $pfAmount = 10.0;
-            try {
-                $pfStmt = $pdo->prepare("
-                    SELECT fee_amount, fee_type, is_active 
-                    FROM `platform_settings` 
-                    WHERE setting_key = 'convenience_fee' AND country_code = 'IN' 
-                    LIMIT 1
-                ");
-                $pfStmt->execute();
-                $pfRow = $pfStmt->fetch(PDO::FETCH_ASSOC);
-                if ($pfRow && !empty($pfRow['is_active'])) {
-                    $pfType = $pfRow['fee_type'] ?? 'percentage';
-                    $pfAmount = (float)($pfRow['fee_amount'] ?? 10.0);
-                    if ($pfType === 'percentage') {
-                        $pfPercent = $pfAmount;
-                    }
-                }
-            } catch (\Throwable $t) {}
-
-            header('Content-Type: application/json');
-            echo json_encode([
-                'status' => 'success',
-                'wallet' => $wallet,
-                'bank' => $bank,
-                'transactions' => $transactions,
-                'payouts' => $payouts,
-                'platform_fee_percent' => $pfPercent,
-                'platform_fee_type' => $pfType,
-                'platform_fee_amount' => $pfAmount
-            ]);
-            exit();
-        }
-
-        if ($action === 'save_bank_details') {
-            $provider_id = (int)$dealer_id;
-            $saveType = trim($_POST['save_type'] ?? 'all'); // 'bank', 'upi', or 'all'
-
-            $chkStmt = $pdo->prepare("SELECT * FROM `provider_bank_accounts` WHERE provider_id = ? ORDER BY id DESC LIMIT 1");
-            $chkStmt->execute([$provider_id]);
-            $existing = $chkStmt->fetch(PDO::FETCH_ASSOC);
-
-            if ($saveType === 'bank') {
-                $holder = trim($_POST['account_holder_name'] ?? '');
-                $bankName = trim($_POST['bank_name'] ?? '');
-                $accNum = trim($_POST['account_number'] ?? '');
-                $accNumConfirm = trim($_POST['account_number_confirm'] ?? '');
-                $ifsc = strtoupper(trim($_POST['ifsc_code'] ?? ''));
-
-                if (empty($holder) || empty($bankName) || empty($accNum) || empty($ifsc)) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['status' => 'error', 'message' => 'Account holder name, bank name, account number, and IFSC code are required.']);
-                    exit();
-                }
-
-                if (!empty($accNumConfirm) && $accNum !== $accNumConfirm) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['status' => 'error', 'message' => 'Bank account numbers do not match.']);
-                    exit();
-                }
-
-                if (strlen($ifsc) !== 11) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['status' => 'error', 'message' => 'IFSC Code must be exactly 11 characters (e.g. HDFC0001234).']);
-                    exit();
-                }
-
-                if ($existing) {
-                    $uStmt = $pdo->prepare("
-                        UPDATE `provider_bank_accounts`
-                        SET account_holder_name = ?, bank_name = ?, account_number = ?, ifsc_code = ?, updated_at = NOW()
-                        WHERE id = ?
-                    ");
-                    $uStmt->execute([$holder, $bankName, $accNum, $ifsc, $existing['id']]);
-                } else {
-                    $iStmt = $pdo->prepare("
-                        INSERT INTO `provider_bank_accounts`
-                        (provider_id, account_holder_name, bank_name, account_number, ifsc_code, upi_id, is_verified, created_at)
-                        VALUES (?, ?, ?, ?, ?, NULL, 1, NOW())
-                    ");
-                    $iStmt->execute([$provider_id, $holder, $bankName, $accNum, $ifsc]);
-                }
-
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success', 'message' => 'Bank account details saved successfully!']);
-                exit();
-
-            } elseif ($saveType === 'upi') {
-                $upiId = strtolower(trim($_POST['upi_id'] ?? ''));
-
-                if (empty($upiId)) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['status' => 'error', 'message' => 'Please enter a valid UPI ID (e.g. mobile@upi or username@bank).']);
-                    exit();
-                }
-
-                if (!str_contains($upiId, '@') || strlen($upiId) < 5) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['status' => 'error', 'message' => 'Invalid UPI ID format. It must contain "@" (e.g. username@okhdfcbank).']);
-                    exit();
-                }
-
-                if ($existing) {
-                    $uStmt = $pdo->prepare("
-                        UPDATE `provider_bank_accounts`
-                        SET upi_id = ?, updated_at = NOW()
-                        WHERE id = ?
-                    ");
-                    $uStmt->execute([$upiId, $existing['id']]);
-                } else {
-                    $iStmt = $pdo->prepare("
-                        INSERT INTO `provider_bank_accounts`
-                        (provider_id, account_holder_name, bank_name, account_number, ifsc_code, upi_id, is_verified, created_at)
-                        VALUES (?, NULL, NULL, NULL, NULL, ?, 1, NOW())
-                    ");
-                    $iStmt->execute([$provider_id, $upiId]);
-                }
-
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success', 'message' => 'UPI ID linked successfully!']);
-                exit();
-
-            } else {
-                // Combined fallback
-                $holder = trim($_POST['account_holder_name'] ?? '');
-                $accNum = trim($_POST['account_number'] ?? '');
-                $ifsc = strtoupper(trim($_POST['ifsc_code'] ?? ''));
-                $bankName = trim($_POST['bank_name'] ?? '');
-                $upiId = trim($_POST['upi_id'] ?? '');
-
-                if (empty($holder) && empty($accNum) && empty($upiId)) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['status' => 'error', 'message' => 'Please enter either Bank Account details or a UPI ID.']);
-                    exit();
-                }
-
-                if ($existing) {
-                    $uStmt = $pdo->prepare("
-                        UPDATE `provider_bank_accounts`
-                        SET account_holder_name = ?, account_number = ?, ifsc_code = ?, bank_name = ?, upi_id = ?, updated_at = NOW()
-                        WHERE id = ?
-                    ");
-                    $uStmt->execute([$holder, $accNum, $ifsc, $bankName, $upiId, $existing['id']]);
-                } else {
-                    $iStmt = $pdo->prepare("
-                        INSERT INTO `provider_bank_accounts`
-                        (provider_id, account_holder_name, account_number, ifsc_code, bank_name, upi_id, is_verified, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, 1, NOW())
-                    ");
-                    $iStmt->execute([$provider_id, $holder, $accNum, $ifsc, $bankName, $upiId]);
-                }
-
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'success', 'message' => 'Settlement details saved successfully!']);
-                exit();
-            }
-        }
-
-        if ($action === 'request_payout') {
-            $provider_id = (int)$dealer_id;
-            $amount = (float)($_POST['amount'] ?? 0);
-            $notes = trim($_POST['notes'] ?? '');
-
-            if ($amount < 100) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Minimum withdrawal amount is ₹100.00.']);
-                exit();
-            }
-
-            $bStmt = $pdo->prepare("SELECT id, account_number, upi_id FROM `provider_bank_accounts` WHERE provider_id = ? ORDER BY id DESC LIMIT 1");
-            $bStmt->execute([$provider_id]);
-            $bank = $bStmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$bank || (empty($bank['account_number']) && empty($bank['upi_id']))) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Please add and verify your Bank Account or UPI ID before requesting a payout.']);
-                exit();
-            }
-
-            $wStmt = $pdo->prepare("SELECT available_balance FROM `provider_wallets` WHERE provider_id = ? LIMIT 1");
-            $wStmt->execute([$provider_id]);
-            $currBal = (float)($wStmt->fetchColumn() ?: 0);
-
-            if ($currBal < $amount) {
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Insufficient available balance. You have ₹' . number_format($currBal, 2) . ' available.']);
-                exit();
-            }
-
-            $payoutRef = 'PO-' . strtoupper(bin2hex(random_bytes(5)));
-            try {
-                $pdo->beginTransaction();
-
-                $deductStmt = $pdo->prepare("
-                    UPDATE `provider_wallets`
-                    SET available_balance = available_balance - ?,
-                        total_withdrawn = total_withdrawn + ?
-                    WHERE provider_id = ? AND available_balance >= ?
-                ");
-                $deductStmt->execute([$amount, $amount, $provider_id, $amount]);
-
-                if ($deductStmt->rowCount() === 0) {
-                    $pdo->rollBack();
-                    header('Content-Type: application/json');
-                    echo json_encode(['status' => 'error', 'message' => 'Failed to reserve funds. Please try again.']);
-                    exit();
-                }
-
-                $insPayout = $pdo->prepare("
-                    INSERT INTO `payout_requests`
-                    (request_ref, provider_id, amount, status, admin_notes, created_at)
-                    VALUES (?, ?, ?, 'PENDING', ?, NOW())
-                ");
-                $insPayout->execute([$payoutRef, $provider_id, $amount, $notes ?: 'Provider withdrawal request via wallet']);
-
-                $pdo->commit();
-
-                header('Content-Type: application/json');
-                echo json_encode([
-                    'status' => 'success',
-                    'message' => 'Payout request of ₹' . number_format($amount, 2) . ' submitted successfully! Ref: ' . $payoutRef,
-                    'payout_ref' => $payoutRef,
-                    'new_available' => $currBal - $amount
-                ]);
-                exit();
-            } catch (Exception $e) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-                header('Content-Type: application/json');
-                echo json_encode(['status' => 'error', 'message' => 'Payout request error: ' . $e->getMessage()]);
-                exit();
-            }
-        }
-
-        if ($action === 'delete_branch') {
-            $branch_id = (int)($_POST['branch_id'] ?? 0);
-            $pdo->prepare("
-                DELETE b FROM `serveasy-provider-branches` b
-                WHERE b.id = ? AND b.provider_id = ?
-            ")->execute([$branch_id, $dealer_id]);
-
-            header('Content-Type: application/json');
-            echo json_encode(['status' => 'success', 'message' => 'Branch deleted.']);
-            exit();
-        }
-    }
-
-    // Fetch active platform fee / convenience fee configuration from serveasy-admin for provider views
-    $platformFeePercent = 10.0;
-    $platformFeeType = 'percentage';
-    $platformFeeAmount = 10.0;
-    try {
-        $feeSettingStmt = $pdo->query("
-            SELECT fee_amount, fee_type, is_active 
-            FROM `platform_settings` 
-            WHERE setting_key = 'convenience_fee' AND country_code = 'IN' 
-            LIMIT 1
-        ");
-        $feeRow = $feeSettingStmt ? $feeSettingStmt->fetch(PDO::FETCH_ASSOC) : null;
-        if ($feeRow && !empty($feeRow['is_active'])) {
-            $platformFeeType = $feeRow['fee_type'] ?? 'percentage';
-            $platformFeeAmount = (float)($feeRow['fee_amount'] ?? 10.0);
-            if ($platformFeeType === 'percentage') {
-                $platformFeePercent = $platformFeeAmount;
-            }
-        }
-    } catch (\Throwable $t) {}
-
-
-} catch (PDOException $e) {
-    die("Database error: " . $e->getMessage());
+$dealer_id = (int)$dealer['id'];
+
+// Determine active tab from URL query parameter
+$open_tab = $_GET['tab'] ?? '';
+$valid_tabs = ['dashboard', 'products', 'orders', 'wallet', 'profile', 'verification'];
+if (!in_array($open_tab, $valid_tabs, true)) {
+    $open_tab = 'dashboard';
 }
+
+// 1. Proxy all AJAX Actions transparently to Central Backend API
+$action = $_REQUEST['ajax_action'] ?? $_REQUEST['action'] ?? null;
+if ($action !== null) {
+    $proxyRes = \Frontend\ApiBridge::proxyRequest('provider-dashboard-api.php');
+    if ($proxyRes['http_code'] === 401) {
+        unset($_SESSION['dealer'], $_SESSION['access_token']);
+    }
+    if ($action === 'save_provider_profile' && $proxyRes['http_code'] >= 200 && $proxyRes['http_code'] < 300) {
+        $decoded = json_decode($proxyRes['body'], true);
+        if (!empty($decoded['status']) && $decoded['status'] === 'success') {
+            if (!empty($_POST['full_name'])) $_SESSION['dealer']['name'] = trim($_POST['full_name']);
+            if (!empty($_POST['email'])) $_SESSION['dealer']['email'] = trim($_POST['email']);
+            if (!empty($_POST['phone'])) $_SESSION['dealer']['phone'] = trim($_POST['phone']);
+        }
+    }
+    http_response_code($proxyRes['http_code']);
+    header('Content-Type: application/json; charset=utf-8');
+    echo $proxyRes['body'];
+    exit();
+}
+
+// 2. Fetch Initial Dashboard State from Central Backend API
+$initRes = \Frontend\ApiBridge::callApi('provider-dashboard-api.php?action=init_dashboard');
+
+if (empty($initRes) || ($initRes['status'] ?? '') !== 'success') {
+    // If session token expired or missing, redirect cleanly to login.php
+    if (empty($_SESSION['access_token'])) {
+        unset($_SESSION['dealer'], $_SESSION['access_token']);
+        header("Location: login.php");
+        exit();
+    }
+    $fallbackMsg = $initRes['message'] ?? 'Unable to reach Central Backend API. Please log in again.';
+    unset($_SESSION['dealer'], $_SESSION['access_token']);
+    header("Location: login.php?error=" . urlencode($fallbackMsg));
+    exit();
+}
+
+if (!empty($initRes['dealer']) && is_array($initRes['dealer'])) {
+    $dealer = array_merge($dealer, $initRes['dealer']);
+    $_SESSION['dealer'] = $dealer;
+}
+
+$profile_progress    = $initRes['profile_progress'] ?? [
+    'percentage' => 0, 'is_100' => false, 'pillars' => [], 'missing' => [],
+    'phone' => '', 'email' => '', 'address' => '', 'id_status' => 'not_submitted',
+    'ver_record' => null, 'prov_record' => []
+];
+$ver_record          = $initRes['ver_record'] ?? null;
+$prov_record         = $initRes['prov_record'] ?? [];
+$verification_status = $initRes['verification_status'] ?? 'not_submitted';
+$created_at          = $initRes['created_at'] ?? 'N/A';
+$platformFeePercent  = (float)($initRes['platformFeePercent'] ?? 10.0);
+$platformFeeType     = (string)($initRes['platformFeeType'] ?? 'percentage');
+$platformFeeAmount   = (float)($initRes['platformFeeAmount'] ?? 10.0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1848,7 +265,7 @@ try {
                         <button id="sidebarMobileToggle" class="mobile-toggle-btn d-lg-none mr-3" type="button">
                             <i class="fas fa-bars"></i>
                         </button>
-                        <h2 class="welcome-heading">Welcome Back, <?= htmlspecialchars($dealer['full_name'] ?? $dealer['name'] ?? 'Provider') ?> 👋</h2>
+                        <h2 class="welcome-heading">Welcome Back, <?= htmlspecialchars($dealer['full_name'] ?? $dealer['name'] ?? 'Provider') ?> ðŸ‘‹</h2>
                     </div>
 
                     <div class="header-actions">
@@ -2030,7 +447,7 @@ try {
                                 <div class="stat-card-main">
                                     <div class="stat-meta">
                                         <span class="stat-title">Total Revenue</span>
-                                        <span class="stat-val">₹<span id="stat-sales">0.00</span></span>
+                                        <span class="stat-val">â‚¹<span id="stat-sales">0.00</span></span>
                                     </div>
                                     <div class="stat-icon-badge teal">
                                         <i class="fas fa-rupee-sign"></i>
@@ -2253,22 +670,22 @@ try {
                                 <span class="text-muted small text-uppercase font-weight-bold">Available for Withdrawal</span>
                                 <span class="badge badge-success px-2 py-1">Instant Settlement</span>
                             </div>
-                            <div class="h3 font-weight-bold text-emerald mb-0 mt-1" id="modal-available-balance">₹0.00</div>
+                            <div class="h3 font-weight-bold text-emerald mb-0 mt-1" id="modal-available-balance">â‚¹0.00</div>
                         </div>
                         <div id="payoutBalanceWarning" class="alert alert-warning py-2 px-3 small mb-3" style="display: none; border-radius: 8px;">
-                            <i class="fas fa-exclamation-triangle mr-1"></i> Minimum withdrawal is ₹100.00. You need at least ₹100.00 in available balance to submit a payout request.
+                            <i class="fas fa-exclamation-triangle mr-1"></i> Minimum withdrawal is â‚¹100.00. You need at least â‚¹100.00 in available balance to submit a payout request.
                         </div>
 
                         <div class="form-group mb-3">
-                            <label class="font-weight-bold text-gray-800 small text-uppercase">Payout Amount (₹) <span class="text-danger">*</span></label>
+                            <label class="font-weight-bold text-gray-800 small text-uppercase">Payout Amount (â‚¹) <span class="text-danger">*</span></label>
                             <div class="input-group">
                                 <div class="input-group-prepend">
-                                    <span class="input-group-text font-weight-bold">₹</span>
+                                    <span class="input-group-text font-weight-bold">â‚¹</span>
                                 </div>
-                                <input type="number" step="0.01" min="100" id="payoutWithdrawAmount" class="form-control" placeholder="Minimum ₹100.00" required>
+                                <input type="number" step="0.01" min="100" id="payoutWithdrawAmount" class="form-control" placeholder="Minimum â‚¹100.00" required>
                             </div>
                             <div class="d-flex justify-content-between align-items-center mt-1">
-                                <small class="text-muted">Minimum withdrawal: ₹100.00</small>
+                                <small class="text-muted">Minimum withdrawal: â‚¹100.00</small>
                                 <div id="payoutCalcFeedback" class="small"></div>
                             </div>
                         </div>
@@ -2453,7 +870,7 @@ try {
                             <div class="col-md-4 mb-2">
                                 <div class="p-3 bg-white rounded shadow-sm border-left border-success" style="border-left-width: 4px !important;">
                                     <div class="text-muted small text-uppercase font-weight-bold">Total Amount</div>
-                                    <div class="h4 font-weight-bold text-dark mb-0" id="qv-total-amount">₹0.00</div>
+                                    <div class="h4 font-weight-bold text-dark mb-0" id="qv-total-amount">â‚¹0.00</div>
                                     <span class="badge badge-light border mt-1" id="qv-payment-status">UNPAID</span>
                                 </div>
                             </div>
@@ -2496,19 +913,19 @@ try {
                                         <div class="bg-light p-3 rounded mb-2">
                                             <div class="d-flex justify-content-between mb-1 small">
                                                 <span class="text-muted">Service Provider Set Amount:</span>
-                                                <span class="font-weight-bold text-dark" id="qv-base-price">₹0.00</span>
+                                                <span class="font-weight-bold text-dark" id="qv-base-price">â‚¹0.00</span>
                                             </div>
                                             <div id="qv-addons-list">
                                                 <!-- Dynamic Addons -->
                                             </div>
                                             <div class="d-flex justify-content-between mb-1 small" id="qv-platform-charge-row">
                                                 <span class="text-muted" id="qv-fee-label">Platform Charge:</span>
-                                                <span class="font-weight-bold text-info" id="qv-platform-charge">+₹0.00</span>
+                                                <span class="font-weight-bold text-info" id="qv-platform-charge">+â‚¹0.00</span>
                                             </div>
                                             <hr class="my-2">
                                             <div class="d-flex justify-content-between font-weight-bold">
                                                 <span>Total Amount (Paid by Customer):</span>
-                                                <span class="text-emerald" id="qv-breakdown-total" style="color: #10b981;">₹0.00</span>
+                                                <span class="text-emerald" id="qv-breakdown-total" style="color: #10b981;">â‚¹0.00</span>
                                             </div>
                                         </div>
                                         <div class="d-flex justify-content-between align-items-center small text-muted px-1">
@@ -2684,7 +1101,7 @@ try {
 
                     <div class="mb-2">
                         <div class="text-muted small font-weight-bold text-uppercase">Total Amount to Collect</div>
-                        <div class="font-weight-bold text-dark" style="font-size: 1.8rem;" id="qr-modal-amount">₹0.00</div>
+                        <div class="font-weight-bold text-dark" style="font-size: 1.8rem;" id="qr-modal-amount">â‚¹0.00</div>
                     </div>
                     <div class="small text-muted mb-3" id="qr-modal-customer-name">Customer: -</div>
 
@@ -2853,7 +1270,7 @@ try {
                         iconClass = 'fa-clock';
                         actionBtnText = 'View Status';
                         actionBtnClass = 'btn-warning';
-                        valDisplay = `<div class="text-warning small font-weight-bold"><i class="fas fa-clock mr-1"></i>Submitted — Pending Admin Approval</div><div class="text-muted" style="font-size:0.75rem;">${currentVal ? $('<div>').text(currentVal).html() : 'Verification in progress'}</div>`;
+                        valDisplay = `<div class="text-warning small font-weight-bold"><i class="fas fa-clock mr-1"></i>Submitted â€” Pending Admin Approval</div><div class="text-muted" style="font-size:0.75rem;">${currentVal ? $('<div>').text(currentVal).html() : 'Verification in progress'}</div>`;
                     } else if (st === 'rejected') {
                         badgeText = 'Rejected';
                         bgBadge = 'badge-danger';
@@ -2861,7 +1278,7 @@ try {
                         iconClass = 'fa-times-circle';
                         actionBtnText = 'Resubmit ID';
                         actionBtnClass = 'btn-danger';
-                        valDisplay = `<div class="text-danger small font-weight-bold"><i class="fas fa-times-circle mr-1"></i>Rejected by Admin — Resubmit Required</div>`;
+                        valDisplay = `<div class="text-danger small font-weight-bold"><i class="fas fa-times-circle mr-1"></i>Rejected by Admin â€” Resubmit Required</div>`;
                     } else {
                         badgeText = 'Missing';
                         bgBadge = 'badge-danger';
@@ -3107,7 +1524,7 @@ try {
                     <input type="text" name="addon_name[]" class="form-control form-control-sm addon-name-input" placeholder="Service name (e.g. Interior Polish)..." required style="border-radius: 6px; font-size: 0.85rem; flex: 2;">
                     <div class="input-group input-group-sm" style="flex: 1; border-radius: 6px; overflow: hidden;">
                         <div class="input-group-prepend">
-                            <span class="input-group-text" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">₹</span>
+                            <span class="input-group-text" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">â‚¹</span>
                         </div>
                         <input type="number" name="addon_price[]" step="0.01" min="0.00" class="form-control form-control-sm addon-price-input" placeholder="Price..." required style="border-radius: 6px; font-size: 0.85rem;">
                     </div>
@@ -3542,7 +1959,7 @@ try {
                             <div><span class="deskboard-status-pill ${statusClass}">${statusText}</span></div>
                             ${timerHtml}
                         </td>
-                        <td class="tb-price">₹${Number(b.total_amount || 0).toFixed(2)}</td>
+                        <td class="tb-price">â‚¹${Number(b.total_amount || 0).toFixed(2)}</td>
                         <td>
                             <div class="d-flex align-items-center justify-content-center" style="gap:4px;">
                                 ${actionsHtml}
@@ -3623,11 +2040,11 @@ try {
                                     </div>
                                 </div>
                             </td>
-                            <td class="font-weight-bold text-emerald" style="font-size: 1.05rem;">₹${p.price || '0.00'}</td>
+                            <td class="font-weight-bold text-emerald" style="font-size: 1.05rem;">â‚¹${p.price || '0.00'}</td>
                             <td>
                                 <div class="small text-nowrap d-flex align-items-center" style="gap: 8px;">
                                     <span><i class="far fa-clock text-muted mr-1"></i>${p.qty_in_stock || 0} mins</span>
-                                    <span class="text-muted">•</span>
+                                    <span class="text-muted">â€¢</span>
                                     <span><i class="fas fa-route text-muted mr-1"></i>${p.service_range_km ? parseFloat(p.service_range_km).toFixed(0) + ' km' : '10 km'}</span>
                                 </div>
                             </td>
@@ -3959,7 +2376,7 @@ try {
                         try {
                             let extrasArr = JSON.parse(o.extras);
                             if (Array.isArray(extrasArr) && extrasArr.length > 0) {
-                                let list = extrasArr.map(e => `${e.name} (+₹${parseFloat(e.price).toFixed(2)})`).join(', ');
+                                let list = extrasArr.map(e => `${e.name} (+â‚¹${parseFloat(e.price).toFixed(2)})`).join(', ');
                                 extrasHtml = `<div class="text-emerald font-weight-bold" style="font-size:0.75rem; margin-top:2px;"><i class="fas fa-plus-circle mr-1"></i>Add-ons: ${list}</div>`;
                             }
                         } catch (e) {}
@@ -3970,7 +2387,7 @@ try {
                         <td><div style="cursor: pointer;" onclick="showBookingQuickView(${o.id})" title="Click to Quick View"><div class="font-weight-bold text-dark">${o.customer_name || 'Customer'}</div><small class="text-muted font-weight-bold">${o.customer_phone || 'N/A'}</small></div></td>
                         <td><div class="font-weight-bold" style="font-size:0.8rem;">${o.service_name}</div><small class="text-muted">${vehicleInfo}</small>${extrasHtml}</td>
                         <td><div>${new Date(o.order_date).toLocaleDateString()}</div><small class="text-muted font-weight-bold">${scheduleTimeFormatted}</small></td>
-                        <td class="font-weight-bold text-gray-800">₹${o.order_total}</td>
+                        <td class="font-weight-bold text-gray-800">â‚¹${o.order_total}</td>
                         <td>
                             <div><span class="badge badge-${badgeClass} px-2 py-1" style="text-transform: uppercase; font-size:0.65rem;">${o.status_name}</span></div>
                             ${timerHtml}
@@ -4244,7 +2661,7 @@ try {
             $('#qv-status-badge').attr('class', 'badge px-3 py-2 text-uppercase ' + badgeClass).text(statusLabel);
 
             // Highlights
-            $('#qv-total-amount').text('₹' + Number(b.total_amount || 0).toFixed(2));
+            $('#qv-total-amount').text('â‚¹' + Number(b.total_amount || 0).toFixed(2));
 
             const pStatus = (b.payment_status || 'UNPAID').toUpperCase();
             $('#qv-payment-status').text(pStatus)
@@ -4285,7 +2702,7 @@ try {
                             addonsTotal += itemPrice;
                             addonsHtml += `<div class="d-flex justify-content-between mb-1 small">
                                 <span class="text-muted"><i class="fas fa-plus mr-1 text-emerald"></i>${item.name}</span>
-                                <span class="font-weight-bold text-dark">+₹${itemPrice.toFixed(2)}</span>
+                                <span class="font-weight-bold text-dark">+â‚¹${itemPrice.toFixed(2)}</span>
                             </div>`;
                         });
                     }
@@ -4301,17 +2718,17 @@ try {
 
             let platformCharge = Math.max(0, Math.round((totalAmt - providerSetAmount) * 100) / 100);
 
-            $('#qv-base-price').text('₹' + baseP.toFixed(2));
+            $('#qv-base-price').text('â‚¹' + baseP.toFixed(2));
             $('#qv-addons-list').html(addonsHtml);
 
             if (platformCharge > 0) {
                 $('#qv-platform-charge-row').show();
-                $('#qv-platform-charge').text('+₹' + platformCharge.toFixed(2));
+                $('#qv-platform-charge').text('+â‚¹' + platformCharge.toFixed(2));
             } else {
                 $('#qv-platform-charge-row').hide();
             }
 
-            $('#qv-breakdown-total').text('₹' + totalAmt.toFixed(2));
+            $('#qv-breakdown-total').text('â‚¹' + totalAmt.toFixed(2));
             const rawPm = (b.payment_method || '').toUpperCase();
             let pmDisplay = 'Pay on Completion';
             if (rawPm === 'ONLINE' || rawPm === 'RAZORPAY') {
@@ -4543,7 +2960,7 @@ try {
                 let rawName = (res.full_name || '').trim();
                 let fullName = (rawName.toLowerCase() === 'service provider') ? '' : rawName;
 
-                // ── Left card ────────────────────────────────────────────────
+                // â”€â”€ Left card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if (hasCompany) {
                     $('#prof-name').text(companyName);
                     $('#prof-company-display').html('<i class="fas fa-building mr-1 text-emerald"></i>' + $('<div>').text(companyName).html());
@@ -4563,7 +2980,7 @@ try {
                     .removeClass('badge-success badge-danger badge-secondary')
                     .addClass(res.status === 'active' ? 'badge-success' : 'badge-danger');
 
-                // ── Verified status badge ────────────────────────────────────
+                // â”€â”€ Verified status badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 let vs = res.verified_status || 'pending';
                 let vsBadge = 'badge-secondary';
                 let vsLabel = vs.replace('_', ' ').toUpperCase();
@@ -4575,7 +2992,7 @@ try {
                     .removeClass('badge-success badge-danger badge-warning badge-secondary')
                     .addClass(vsBadge);
 
-                // ── Editable account details ──────────────────────────────────
+                // â”€â”€ Editable account details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 $('#edit-full-name').val(fullName);
                 $('#edit-email').val(res.email || '');
                 $('#edit-phone').val(res.phone || '');
@@ -4590,7 +3007,7 @@ try {
                     $('#company-register-prompt-row').show();
                 }
 
-                // ── Location & range ──────────────────────────────────────────
+                // â”€â”€ Location & range â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 let finalAddr = (res.location_address && res.location_address.trim()) ? res.location_address : '';
                 let finalLm   = (res.landmark && res.landmark.trim()) ? res.landmark : '';
                 let finalPin  = (res.pincode && res.pincode.trim()) ? res.pincode : '';
@@ -4603,7 +3020,7 @@ try {
                 $('#edit-latitude').val(finalLat);
                 $('#edit-longitude').val(finalLng);
                 if (finalLat && finalLng) {
-                    $('#lat-lng-display').text('📍 ' + parseFloat(finalLat).toFixed(5) + ', ' + parseFloat(finalLng).toFixed(5));
+                    $('#lat-lng-display').text('ðŸ“ ' + parseFloat(finalLat).toFixed(5) + ', ' + parseFloat(finalLng).toFixed(5));
                 } else {
                     $('#lat-lng-display').text('');
                 }
@@ -4612,7 +3029,7 @@ try {
                 $('#profileMapSection').hide();
                 $('#toggleProfileMapBtn').html('<i class="fas fa-map-marked-alt mr-1"></i> Pin on Map');
 
-                // ── Branches Card: Gate branches on company ───────────────────
+                // â”€â”€ Branches Card: Gate branches on company â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if (hasCompany) {
                     $('#branchCompanyLockAlert').hide();
                     $('#btnRegisterCompanyForBranch').hide();
@@ -4627,7 +3044,7 @@ try {
                     $('#addBranchForm').hide();
                 }
 
-                // ── Branches ──────────────────────────────────────────────────
+                // â”€â”€ Branches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 window.currentProviderBranches = res.branches || [];
                 renderBranches(res.branches || []);
                 
@@ -4806,7 +3223,7 @@ try {
             window.open(gmapsUrl, '_blank');
 
             if (typeof Notify !== 'undefined' && Notify.info) {
-                Notify.info('📍 On Google Maps: Right-click your location and click coordinates to copy, then paste them into the search box!', { single: true });
+                Notify.info('ðŸ“ On Google Maps: Right-click your location and click coordinates to copy, then paste them into the search box!', { single: true });
             }
         }
 
@@ -4821,11 +3238,11 @@ try {
                 
                 // Google Maps Roadmap tile layer (Crisp road network, landmarks, shops)
                 const googleRoads = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-                    attribution: '© Google Maps',
+                    attribution: 'Â© Google Maps',
                     maxZoom: 20
                 });
                 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors',
+                    attribution: 'Â© OpenStreetMap contributors',
                     maxZoom: 19
                 });
 
@@ -4857,11 +3274,11 @@ try {
                 branchMap = L.map('branchMapContainer', { zoomControl: true }).setView([20.5937, 78.9629], 5);
                 
                 const googleRoads = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-                    attribution: '© Google Maps',
+                    attribution: 'Â© Google Maps',
                     maxZoom: 20
                 });
                 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors',
+                    attribution: 'Â© OpenStreetMap contributors',
                     maxZoom: 19
                 });
 
@@ -4954,8 +3371,8 @@ try {
 
             // Clean up administrative noise anywhere in the string
             address = address
-                .replace(/,\s*(Greater\s*Kolkata|Barrackpur\s*[-–]\s*II|Barrackpore\s*[-–]?\s*[I|1|2|II]+|North\s*24\s*Parganas|South\s*24\s*Parganas|India)\b/gi, '')
-                .replace(/\b(Greater\s*Kolkata|Barrackpur\s*[-–]\s*II|Barrackpore\s*[-–]?\s*[I|1|2|II]+|North\s*24\s*Parganas|South\s*24\s*Parganas|India),\s*/gi, '')
+                .replace(/,\s*(Greater\s*Kolkata|Barrackpur\s*[-â€“]\s*II|Barrackpore\s*[-â€“]?\s*[I|1|2|II]+|North\s*24\s*Parganas|South\s*24\s*Parganas|India)\b/gi, '')
+                .replace(/\b(Greater\s*Kolkata|Barrackpur\s*[-â€“]\s*II|Barrackpore\s*[-â€“]?\s*[I|1|2|II]+|North\s*24\s*Parganas|South\s*24\s*Parganas|India),\s*/gi, '')
                 .replace(/,\s*India$/gi, '')
                 .replace(/\s*,\s*,+/g, ', ')
                 .trim()
@@ -5055,14 +3472,14 @@ try {
         function updateProfileLocation(lat, lng) {
             $('#edit-latitude').val(lat.toFixed(7));
             $('#edit-longitude').val(lng.toFixed(7));
-            $('#lat-lng-display').text('📍 ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
+            $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
             
             reverseGeocodeCoords(lat, lng, function(res) {
                 if (res.address) $('#edit-location-address').val(res.address);
                 if (res.landmark) $('#edit-landmark').val(res.landmark);
                 if (res.pincode) $('#edit-pincode').val(res.pincode);
                 if (profileMapMarker) {
-                    profileMapMarker.bindPopup(`<b>📍 ${res.landmark || 'Pinned Location'}</b><br><small>${res.address}</small>`).openPopup();
+                    profileMapMarker.bindPopup(`<b>ðŸ“ ${res.landmark || 'Pinned Location'}</b><br><small>${res.address}</small>`).openPopup();
                 }
             });
         }
@@ -5075,7 +3492,7 @@ try {
                 if (res.address) $('#branch-address').val(res.address);
                 if (res.pincode) $('#branch-pincode').val(res.pincode);
                 if (branchMapMarker) {
-                    branchMapMarker.bindPopup(`<b>📍 ${res.landmark || 'Branch Location'}</b><br><small>${res.address}</small>`).openPopup();
+                    branchMapMarker.bindPopup(`<b>ðŸ“ ${res.landmark || 'Branch Location'}</b><br><small>${res.address}</small>`).openPopup();
                 }
             });
         }
@@ -5093,19 +3510,19 @@ try {
 
             $('#edit-latitude').val(lat.toFixed(7));
             $('#edit-longitude').val(lng.toFixed(7));
-            $('#lat-lng-display').text('📍 ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
+            $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
 
             reverseGeocodeCoords(lat, lng, function(res) {
                 if (res.address) $('#edit-location-address').val(res.address);
                 if (res.landmark) $('#edit-landmark').val(res.landmark);
                 if (res.pincode) $('#edit-pincode').val(res.pincode);
                 if (profileMapMarker) {
-                    profileMapMarker.bindPopup(`<b>📍 ${label || res.landmark || 'Pinned Location'}</b><br><small>${res.address}</small>`).openPopup();
+                    profileMapMarker.bindPopup(`<b>ðŸ“ ${label || res.landmark || 'Pinned Location'}</b><br><small>${res.address}</small>`).openPopup();
                 }
             });
 
             if (typeof Notify !== 'undefined' && Notify.success) {
-                Notify.success(`📍 Location set: ${lat.toFixed(5)}, ${lng.toFixed(5)}!`, { single: true });
+                Notify.success(`ðŸ“ Location set: ${lat.toFixed(5)}, ${lng.toFixed(5)}!`, { single: true });
             }
         }
 
@@ -5127,12 +3544,12 @@ try {
                 if (res.address) $('#branch-address').val(res.address);
                 if (res.pincode) $('#branch-pincode').val(res.pincode);
                 if (branchMapMarker) {
-                    branchMapMarker.bindPopup(`<b>📍 ${label || res.landmark || 'Branch Location'}</b><br><small>${res.address}</small>`).openPopup();
+                    branchMapMarker.bindPopup(`<b>ðŸ“ ${label || res.landmark || 'Branch Location'}</b><br><small>${res.address}</small>`).openPopup();
                 }
             });
 
             if (typeof Notify !== 'undefined' && Notify.success) {
-                Notify.success(`📍 Branch location set: ${lat.toFixed(5)}, ${lng.toFixed(5)}!`, { single: true });
+                Notify.success(`ðŸ“ Branch location set: ${lat.toFixed(5)}, ${lng.toFixed(5)}!`, { single: true });
             }
         }
 
@@ -5250,7 +3667,7 @@ try {
 
             $('#edit-latitude').val(lat.toFixed(7));
             $('#edit-longitude').val(lng.toFixed(7));
-            $('#lat-lng-display').text('📍 ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
+            $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
 
             const addr = place.display_name || '';
             const a = place.address || {};
@@ -5262,12 +3679,12 @@ try {
             if (landmark && !$('#edit-landmark').val()) $('#edit-landmark').val(landmark);
 
             if (profileMapMarker) {
-                profileMapMarker.bindPopup(`<b>📍 ${place.name || 'Pinned Location'}</b><br><small>${addr}</small>`).openPopup();
+                profileMapMarker.bindPopup(`<b>ðŸ“ ${place.name || 'Pinned Location'}</b><br><small>${addr}</small>`).openPopup();
             }
 
             // Exactly ONE notification
             if (typeof Notify !== 'undefined' && Notify.success) {
-                Notify.success(`📍 Location set: ${place.name || addr.split(',')[0]}!`, { single: true });
+                Notify.success(`ðŸ“ Location set: ${place.name || addr.split(',')[0]}!`, { single: true });
             }
         }
 
@@ -5366,12 +3783,12 @@ try {
             if (landmark && !$('#branch-landmark').val()) $('#branch-landmark').val(landmark);
 
             if (branchMapMarker) {
-                branchMapMarker.bindPopup(`<b>📍 ${place.name || 'Branch Location'}</b><br><small>${addr}</small>`).openPopup();
+                branchMapMarker.bindPopup(`<b>ðŸ“ ${place.name || 'Branch Location'}</b><br><small>${addr}</small>`).openPopup();
             }
 
             // Exactly ONE notification
             if (typeof Notify !== 'undefined' && Notify.success) {
-                Notify.success(`📍 Branch location set: ${place.name || addr.split(',')[0]}!`, { single: true });
+                Notify.success(`ðŸ“ Branch location set: ${place.name || addr.split(',')[0]}!`, { single: true });
             }
         }
 
@@ -5404,11 +3821,11 @@ try {
 
                         $('#edit-latitude').val(lat.toFixed(7));
                         $('#edit-longitude').val(lng.toFixed(7));
-                        $('#lat-lng-display').text('📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5));
+                        $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(5) + ', ' + lng.toFixed(5));
                         updateProfileLocation(lat, lng);
 
                         if (typeof Notify !== 'undefined' && Notify.success) {
-                            Notify.success('📍 Live network location detected and set!', { single: true });
+                            Notify.success('ðŸ“ Live network location detected and set!', { single: true });
                         }
                     },
                     error: function() {
@@ -5442,11 +3859,11 @@ try {
 
                 $('#edit-latitude').val(lat.toFixed(7));
                 $('#edit-longitude').val(lng.toFixed(7));
-                $('#lat-lng-display').text('📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5));
+                $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(5) + ', ' + lng.toFixed(5));
                 updateProfileLocation(lat, lng);
 
                 if (typeof Notify !== 'undefined' && Notify.success) {
-                    Notify.success('📍 Live location detected and set!', { single: true });
+                    Notify.success('ðŸ“ Live location detected and set!', { single: true });
                 }
             }, function(err) {
                 // If browser GPS fails or is denied, smoothly fallback to BigDataCloud
@@ -5486,7 +3903,7 @@ try {
                         updateBranchLocation(lat, lng);
 
                         if (typeof Notify !== 'undefined' && Notify.success) {
-                            Notify.success('📍 Branch live network location set successfully!', { single: true });
+                            Notify.success('ðŸ“ Branch live network location set successfully!', { single: true });
                         }
                     },
                     error: function() {
@@ -5523,7 +3940,7 @@ try {
                 updateBranchLocation(lat, lng);
 
                 if (typeof Notify !== 'undefined' && Notify.success) {
-                    Notify.success('📍 Branch live location set successfully!', { single: true });
+                    Notify.success('ðŸ“ Branch live location set successfully!', { single: true });
                 }
             }, function(err) {
                 fallbackBranchBdcClientGeo();
@@ -5744,21 +4161,21 @@ try {
             $('#wallet-pending').text(pending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#wallet-earned').text(earned.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#wallet-withdrawn').text(withdrawn.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-            $('#modal-available-balance').text('₹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            $('#modal-available-balance').text('â‚¹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
             // Update Dynamic Platform Fee column header & KPI note
             const feePercent = data.platform_fee_percent !== undefined ? parseFloat(data.platform_fee_percent) : 10;
             const feeType = data.platform_fee_type || 'percentage';
             const feeAmount = parseFloat(data.platform_fee_amount || 0);
             const feeFormattedPct = (Number.isInteger(feePercent) ? feePercent.toString() : feePercent.toFixed(2).replace(/\.?0+$/, '')) + '%';
-            const feeLabel = (feeType === 'percentage') ? feeFormattedPct : ('₹' + feeAmount.toFixed(2));
+            const feeLabel = (feeType === 'percentage') ? feeFormattedPct : ('â‚¹' + feeAmount.toFixed(2));
 
             $('#th-wallet-platform-fee').text('Platform Fee (' + feeLabel + ')');
             $('#wallet-fee-note').text('After ' + feeLabel + ' Platform Fee');
 
             // 2. Update Bank Account Card
             if (bank && bank.account_number) {
-                const maskedAcc = '•••• •••• ' + bank.account_number.slice(-4);
+                const maskedAcc = 'â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ' + bank.account_number.slice(-4);
                 $('#wallet-bank-name').text(bank.bank_name ? (bank.bank_name + ' (' + bank.account_holder_name + ')') : bank.account_holder_name);
                 $('#wallet-bank-badge').removeClass('badge-secondary badge-danger').addClass('badge-success').text(bank.is_verified ? 'Verified & Active' : 'Active');
                 $('#wallet-bank-details').html(`<i class="fas fa-credit-card mr-1 text-muted"></i> A/C: <strong>${maskedAcc}</strong> &nbsp;|&nbsp; <i class="fas fa-code-branch mr-1 text-muted"></i> IFSC: <strong>${bank.ifsc_code}</strong>`);
@@ -5825,9 +4242,9 @@ try {
                                 <div class="font-weight-bold text-gray-800">${cName}</div>
                                 <small class="text-muted">${t.customer_phone || ''}</small>
                             </td>
-                            <td><span class="font-weight-bold text-gray-800">₹${gross}</span></td>
-                            <td><span class="text-danger small font-weight-bold">-₹${fee}</span></td>
-                            <td><strong class="text-emerald" style="color: #05C279; font-size: 0.95rem;">+₹${net}</strong></td>
+                            <td><span class="font-weight-bold text-gray-800">â‚¹${gross}</span></td>
+                            <td><span class="text-danger small font-weight-bold">-â‚¹${fee}</span></td>
+                            <td><strong class="text-emerald" style="color: #05C279; font-size: 0.95rem;">+â‚¹${net}</strong></td>
                             <td><span class="badge badge-light border"><i class="fas fa-credit-card mr-1 text-primary"></i>${t.payment_gateway || 'RAZORPAY'}</span></td>
                             <td>${statusBadge}</td>
                             <td><small class="text-muted font-weight-bold">${dateStr}</small></td>
@@ -5861,7 +4278,7 @@ try {
                     poHtml += `
                         <tr>
                             <td><strong class="text-gray-800" style="font-family: monospace;">${p.payout_ref}</strong></td>
-                            <td><strong class="text-dark" style="font-size: 1rem;">₹${amt}</strong></td>
+                            <td><strong class="text-dark" style="font-size: 1rem;">â‚¹${amt}</strong></td>
                             <td>${stBadge}</td>
                             <td>${p.utr_number ? `<strong class="text-success font-monospace">${p.utr_number}</strong>` : '<span class="text-muted small">Awaiting Admin UTR</span>'}</td>
                             <td><small class="text-muted">${p.admin_notes || 'Withdrawal request'}</small></td>
@@ -5940,22 +4357,22 @@ try {
             if (avail <= 0) {
                 if (showAlert) {
                     if (typeof Notify !== 'undefined' && Notify.warning) {
-                        Notify.warning('Withdrawal condition not met: Your available wallet balance is ₹0.00. Earnings will unlock automatically once active bookings/orders are marked completed.', { title: 'Zero Balance' });
+                        Notify.warning('Withdrawal condition not met: Your available wallet balance is â‚¹0.00. Earnings will unlock automatically once active bookings/orders are marked completed.', { title: 'Zero Balance' });
                     } else {
-                        alert('Withdrawal condition not met: Your available wallet balance is ₹0.00. Earnings will unlock automatically once active bookings/orders are marked completed.');
+                        alert('Withdrawal condition not met: Your available wallet balance is â‚¹0.00. Earnings will unlock automatically once active bookings/orders are marked completed.');
                     }
                 }
                 return { eligible: false, reason: 'zero_balance' };
             }
 
-            // Condition 3: Minimum threshold limit (₹100.00)
+            // Condition 3: Minimum threshold limit (â‚¹100.00)
             if (avail < 100) {
-                var balFmt = '₹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                var balFmt = 'â‚¹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 if (showAlert) {
                     if (typeof Notify !== 'undefined' && Notify.warning) {
-                        Notify.warning('Withdrawal condition not met: Minimum withdrawal threshold is ₹100.00. Your current available balance is ' + balFmt + '.', { title: 'Threshold Not Met' });
+                        Notify.warning('Withdrawal condition not met: Minimum withdrawal threshold is â‚¹100.00. Your current available balance is ' + balFmt + '.', { title: 'Threshold Not Met' });
                     } else {
-                        alert('Withdrawal condition not met: Minimum withdrawal threshold is ₹100.00. Your current available balance is ' + balFmt + '.');
+                        alert('Withdrawal condition not met: Minimum withdrawal threshold is â‚¹100.00. Your current available balance is ' + balFmt + '.');
                     }
                 }
                 return { eligible: false, reason: 'below_threshold', balance: avail };
@@ -5992,7 +4409,7 @@ try {
             var avail = check.balance;
             var bank = check.bank;
 
-            $('#modal-available-balance').text('₹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            $('#modal-available-balance').text('â‚¹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#payoutWithdrawAmount').val('').attr('max', avail);
             $('#payoutNotes').val('');
             $('#payoutCalcFeedback').html('');
@@ -6000,7 +4417,7 @@ try {
             $('#btnSubmitPayout').prop('disabled', false);
 
             if (bank && bank.account_number) {
-                var masked = '•••• •••• ' + bank.account_number.slice(-4);
+                var masked = 'â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ' + bank.account_number.slice(-4);
                 $('#modal-dest-bank-label').text(`${bank.bank_name || 'Bank'} (${masked})`);
                 $('#destBankRadio').prop('disabled', false).prop('checked', true);
             } else {
@@ -6030,13 +4447,13 @@ try {
 
             if (amount < 100) {
                 if (typeof Notify !== 'undefined' && Notify.error) {
-                    Notify.error('Minimum withdrawal amount is ₹100.00.');
+                    Notify.error('Minimum withdrawal amount is â‚¹100.00.');
                 }
                 return;
             }
             if (amount > avail) {
                 if (typeof Notify !== 'undefined' && Notify.error) {
-                    Notify.error(`Requested amount exceeds available balance of ₹${avail.toFixed(2)}.`);
+                    Notify.error(`Requested amount exceeds available balance of â‚¹${avail.toFixed(2)}.`);
                 }
                 return;
             }
@@ -6250,10 +4667,10 @@ try {
                 $('#payoutCalcFeedback').html('<span class="text-danger font-weight-bold"><i class="fas fa-exclamation-circle mr-1"></i> Exceeds available balance!</span>');
                 $('#btnSubmitPayout').prop('disabled', true);
             } else if (val < 100) {
-                $('#payoutCalcFeedback').html('<span class="text-warning font-weight-bold"><i class="fas fa-info-circle mr-1"></i> Min ₹100.00</span>');
+                $('#payoutCalcFeedback').html('<span class="text-warning font-weight-bold"><i class="fas fa-info-circle mr-1"></i> Min â‚¹100.00</span>');
                 $('#btnSubmitPayout').prop('disabled', true);
             } else {
-                $('#payoutCalcFeedback').html('<span class="text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Remaining: ₹' + rem.toFixed(2) + '</span>');
+                $('#payoutCalcFeedback').html('<span class="text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Remaining: â‚¹' + rem.toFixed(2) + '</span>');
                 $('#btnSubmitPayout').prop('disabled', false);
             }
         });
@@ -6297,13 +4714,13 @@ try {
             var avail = check.balance;
             var bank = check.bank;
             
-            $('#modal-available-balance').text('₹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            $('#modal-available-balance').text('â‚¹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#payoutWithdrawAmount').val('').attr('max', avail);
             $('#payoutNotes').val('');
             $('#payoutCalcFeedback').html('');
 
             if (bank && bank.account_number) {
-                var masked = '•••• •••• ' + bank.account_number.slice(-4);
+                var masked = 'â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ' + bank.account_number.slice(-4);
                 $('#modal-dest-bank-label').text(`${bank.bank_name || 'Bank'} (${masked})`);
                 $('#destBankRadio').prop('disabled', false).prop('checked', true);
             } else {
@@ -6396,7 +4813,7 @@ try {
         const custName = customerNameEnc ? decodeURIComponent(customerNameEnc) : 'Customer';
         const amtNum = parseFloat(amount || 0).toFixed(2);
         $('#qr-modal-booking-ref').text('Ref: #' + bookingNumber);
-        $('#qr-modal-amount').text('₹' + amtNum);
+        $('#qr-modal-amount').text('â‚¹' + amtNum);
         $('#qr-modal-customer-name').text('Customer: ' + custName);
 
         const upiString = `upi://pay?pa=serveasy@upi&pn=ServEasy%20Marketplace&am=${amtNum}&tr=${encodeURIComponent(bookingNumber)}&tn=Booking%20Payment%20${encodeURIComponent(bookingNumber)}&cu=INR`;
@@ -6414,7 +4831,7 @@ try {
     window.markBookingPaid = function(id, ref, amount) {
         Swal.fire({
             title: 'Confirm Cash Payment',
-            html: `Did you collect <strong>₹${parseFloat(amount).toFixed(2)}</strong> in cash from the customer for booking <strong>#${ref}</strong>?<br><br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> This marks the booking as PAID and incurs <strong>₹20.00</strong> site service charge due.</small>`,
+            html: `Did you collect <strong>â‚¹${parseFloat(amount).toFixed(2)}</strong> in cash from the customer for booking <strong>#${ref}</strong>?<br><br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> This marks the booking as PAID and incurs <strong>â‚¹20.00</strong> site service charge due.</small>`,
             icon: 'question',
             showCancelButton: true,
             confirmButtonColor: '#10b981',
@@ -6476,7 +4893,7 @@ try {
                     <div class="d-flex align-items-center">
                         <i class="fas fa-exclamation-circle fa-2x mr-3 text-warning"></i>
                         <div>
-                            <strong style="font-size: 1rem;">Outstanding Site Service Charge: ₹${due.toFixed(2)}</strong>
+                            <strong style="font-size: 1rem;">Outstanding Site Service Charge: â‚¹${due.toFixed(2)}</strong>
                             <p class="mb-0 small" style="color: #92400e;">You have collected offline cash. Site service charge must be paid before you can accept new bookings.</p>
                         </div>
                     </div>
@@ -6499,13 +4916,13 @@ try {
         balance = balance !== undefined ? balance : currentWalletBalance;
 
         const canPayWallet = balance >= due;
-        const walletText = `Pay from Wallet Balance (Available: ₹${balance.toFixed(2)})`;
+        const walletText = `Pay from Wallet Balance (Available: â‚¹${balance.toFixed(2)})`;
 
         Swal.fire({
             title: '<i class="fas fa-receipt text-warning mr-2"></i> Pay Site Service Charge',
             html: `
                 <div class="text-left py-2">
-                    <p class="mb-2">Total Outstanding Dues: <strong class="text-danger font-size-lg">₹${due.toFixed(2)}</strong></p>
+                    <p class="mb-2">Total Outstanding Dues: <strong class="text-danger font-size-lg">â‚¹${due.toFixed(2)}</strong></p>
                     <p class="small text-muted mb-3">Clearing your dues immediately restores your ability to accept new customer service requests.</p>
                     
                     <div class="custom-control custom-radio mb-2 p-2 border rounded ${canPayWallet ? '' : 'text-muted'}" style="background: rgba(0,0,0,0.02);">
@@ -6527,7 +4944,7 @@ try {
             showCancelButton: true,
             confirmButtonColor: '#10b981',
             cancelButtonColor: '#6c757d',
-            confirmButtonText: '<i class="fas fa-lock mr-1"></i> Pay ₹' + due.toFixed(2),
+            confirmButtonText: '<i class="fas fa-lock mr-1"></i> Pay â‚¹' + due.toFixed(2),
             cancelButtonText: 'Cancel'
         }).then((result) => {
             if (result.isConfirmed) {
@@ -6541,7 +4958,7 @@ try {
                         if (res.status === 'success') {
                             Swal.fire({
                                 icon: 'success',
-                                title: 'Service Charge Cleared! 🎉',
+                                title: 'Service Charge Cleared! ðŸŽ‰',
                                 text: res.message,
                                 confirmButtonColor: '#0084ff'
                             });
@@ -6574,4 +4991,3 @@ try {
 </body>
 
 </html>
-
