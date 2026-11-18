@@ -18,27 +18,29 @@ class PortalConfig {
     public static ?string $liveBackendApiUrl = 'https://beige-curlew-610555.hostingersite.com/api'; 
 
     public static function getApiUrl(): string {
-        $envFile = file_exists(__DIR__ . '/host.env') ? __DIR__ . '/host.env' : (file_exists(__DIR__ . '/.env') ? __DIR__ . '/.env' : null);
-        if ($envFile) {
-            $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            foreach ($lines as $line) {
-                if (str_starts_with(trim($line), '#')) continue;
-                if (str_contains($line, '=')) {
-                    [$k, $v] = explode('=', $line, 2);
-                    $_ENV[trim($k)] = trim($v, " \t\n\r\0\x0B\"'");
-                }
-            }
-        }
-
-        if (!empty($_ENV['BACKEND_API_URL'])) {
-            return rtrim($_ENV['BACKEND_API_URL'], '/');
-        }
-
         $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
         $isLocal = in_array($host, ['localhost', '127.0.0.1', '::1']) || str_starts_with($host, 'localhost:');
 
-        if (!$isLocal && self::$liveBackendApiUrl !== null) {
-            return rtrim(self::$liveBackendApiUrl, '/');
+        if (!$isLocal) {
+            $envFile = file_exists(__DIR__ . '/host.env') ? __DIR__ . '/host.env' : (file_exists(__DIR__ . '/.env') ? __DIR__ . '/.env' : null);
+            if ($envFile) {
+                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    if (str_starts_with(trim($line), '#')) continue;
+                    if (str_contains($line, '=')) {
+                        [$k, $v] = explode('=', $line, 2);
+                        $_ENV[trim($k)] = trim($v, " \t\n\r\0\x0B\"'");
+                    }
+                }
+            }
+
+            if (!empty($_ENV['BACKEND_API_URL'])) {
+                return rtrim($_ENV['BACKEND_API_URL'], '/');
+            }
+
+            if (self::$liveBackendApiUrl !== null) {
+                return rtrim(self::$liveBackendApiUrl, '/');
+            }
         }
 
         $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';

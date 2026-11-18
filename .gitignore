@@ -1,3 +1,7 @@
+# Local / live database credential files (never commit passwords)
+.env
+db.env
+
 # OS generated files
 .DS_Store
 Thumbs.db

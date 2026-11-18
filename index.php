@@ -5,7 +5,7 @@ $dbConnPath = file_exists(__DIR__ . '/../backend/config/db_connection.php')
     ? __DIR__ . '/../backend/config/db_connection.php'
     : (file_exists(__DIR__ . '/../../backend/config/db_connection.php') 
         ? __DIR__ . '/../../backend/config/db_connection.php' 
-        : null);
+        : (file_exists(__DIR__ . '/common/db_connection.php') ? __DIR__ . '/common/db_connection.php' : null));
 
 $bootstrapPath = file_exists(__DIR__ . '/../backend/api/bootstrap.php')
     ? __DIR__ . '/../backend/api/bootstrap.php'

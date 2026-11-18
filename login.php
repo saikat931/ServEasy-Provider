@@ -21,6 +21,9 @@ $otpLabel = $otpConfig['label'] ?? 'Email or Phone Number';
 $otpPlaceholder = $otpConfig['placeholder'] ?? 'Please enter your phone number or email';
 $otpValidationMsg = $otpConfig['validation_message'] ?? 'Please enter a valid email or 10-digit mobile number.';
 $otpInputType = $otpConfig['input_type'] ?? 'text';
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$isLocalHost = in_array($host, ['localhost', '127.0.0.1', '::1']) || str_starts_with($host, 'localhost:');
+$backHomeUrl = $isLocalHost ? '../frontend-web/index.php' : ($_ENV['WEB_PORTAL_URL'] ?? 'https://silver-penguin-156353.hostingersite.com/');
 session_start();
 
 if (isset($_SESSION['dealer'])) {
@@ -73,7 +76,7 @@ if (isset($_SESSION['dealer'])) {
 
         body {
             font-family: var(--ff-roboto);
-            background: url('../frontend-web/pages/assets/images/hero-banner.png');
+            background: url('./img/hero-banner.png');
             background-size: cover;
             background-position: center;
             height: 100vh;
@@ -341,7 +344,7 @@ if (isset($_SESSION['dealer'])) {
             </p>
         </div>
 
-        <a href="../frontend-web/index.php" class="back-home">
+        <a href="<?= htmlspecialchars($backHomeUrl) ?>" class="back-home">
             <ion-icon name="chevron-back-outline" style="display: inline-block; vertical-align: middle;"></ion-icon>
             Back to Home
         </a>
@@ -377,6 +380,21 @@ if (isset($_SESSION['dealer'])) {
         }
 
         window.addEventListener("focus", refreshOtpConfig);
+        window.addEventListener("DOMContentLoaded", function () {
+            refreshOtpConfig();
+            const idEl = document.getElementById("identity");
+            const otpEl = document.getElementById("otp");
+            if (idEl) {
+                idEl.addEventListener("keydown", function (e) {
+                    if (e.key === "Enter") { e.preventDefault(); sendOTP(); }
+                });
+            }
+            if (otpEl) {
+                otpEl.addEventListener("keydown", function (e) {
+                    if (e.key === "Enter") { e.preventDefault(); verifyOTP(); }
+                });
+            }
+        });
 
         function validateIdentity() {
             let identity = document.getElementById("identity").value.trim();
@@ -492,8 +510,38 @@ if (isset($_SESSION['dealer'])) {
                 body: "action=verify_otp&identity=" + encodeURIComponent(identity) + "&otp=" + encodeURIComponent(otp)
             })
                 .then(res => res.json())
-                .then(data => {
+                .then(async data => {
                     if (data.status == "success") {
+                        try {
+                            if (data.access_token) localStorage.setItem("provider_access_token", data.access_token);
+                            if (data.user) localStorage.setItem("provider_user", JSON.stringify(data.user));
+                        } catch (e) {}
+
+                        // Sync PHP session on this Provider domain (required for split-domain Hostinger deployments)
+                        if (data.access_token) {
+                            try {
+                                const syncRes = await fetch("./session-sync.php", {
+                                    method: "POST",
+                                    credentials: "same-origin",
+                                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                                    body: "access_token=" + encodeURIComponent(data.access_token)
+                                });
+                                const syncData = await syncRes.json();
+                                if (!syncData || syncData.status !== "success") {
+                                    verifyBtn.innerHTML = '<span>Verify & Login</span><ion-icon name="checkmark-circle-outline"></ion-icon>';
+                                    verifyBtn.disabled = false;
+                                    Notify.error((syncData && syncData.message) || "Failed to initialize portal session");
+                                    return;
+                                }
+                            } catch (syncErr) {
+                                console.error("Session sync error:", syncErr);
+                                verifyBtn.innerHTML = '<span>Verify & Login</span><ion-icon name="checkmark-circle-outline"></ion-icon>';
+                                verifyBtn.disabled = false;
+                                Notify.error("Could not establish portal session. Please try again.");
+                                return;
+                            }
+                        }
+
                         window.location = "index.php";
                     } else {
                         verifyBtn.innerHTML = '<span>Verify & Login</span><ion-icon name="checkmark-circle-outline"></ion-icon>';

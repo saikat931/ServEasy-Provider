@@ -18,6 +18,12 @@ class ApiBridge {
             return self::$cachedApiUrl;
         }
 
+        // Auto-load portal's independent config.php if not already loaded
+        $portalConfig = dirname(__DIR__) . '/config.php';
+        if (file_exists($portalConfig)) {
+            require_once $portalConfig;
+        }
+
         // 1. Check if portal's independent config.php is set
         $possibleClasses = [
             '\ServEasy\Web\PortalConfig',
@@ -27,9 +33,15 @@ class ApiBridge {
             '\PortalConfig'
         ];
         foreach ($possibleClasses as $cls) {
-            if (class_exists($cls) && !empty($cls::$liveBackendApiUrl)) {
-                self::$cachedApiUrl = rtrim($cls::$liveBackendApiUrl, '/');
-                return self::$cachedApiUrl;
+            if (class_exists($cls)) {
+                if (method_exists($cls, 'getApiUrl')) {
+                    self::$cachedApiUrl = rtrim($cls::getApiUrl(), '/');
+                    return self::$cachedApiUrl;
+                }
+                if (!empty($cls::$liveBackendApiUrl)) {
+                    self::$cachedApiUrl = rtrim($cls::$liveBackendApiUrl, '/');
+                    return self::$cachedApiUrl;
+                }
             }
         }
 
