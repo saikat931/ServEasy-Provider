@@ -871,7 +871,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         <div class="row mb-3">
                             <div class="col-md-4 mb-2">
                                 <div class="p-3 bg-white rounded shadow-sm border-left border-success" style="border-left-width: 4px !important;">
-                                    <div class="text-muted small text-uppercase font-weight-bold">Total Amount</div>
+                                    <div class="text-muted small text-uppercase font-weight-bold">Service Amount</div>
                                     <div class="h4 font-weight-bold text-dark mb-0" id="qv-total-amount">₹0.00</div>
                                     <span class="badge badge-light border mt-1" id="qv-payment-status">UNPAID</span>
                                 </div>
@@ -911,22 +911,22 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                                             </div>
                                         </div>
 
-                                        <h6 class="text-uppercase text-muted font-weight-bold small mb-2">Payment Breakdown</h6>
+                                        <h6 class="text-uppercase text-muted font-weight-bold small mb-2">Service Pricing</h6>
                                         <div class="bg-light p-3 rounded mb-2">
                                             <div class="d-flex justify-content-between mb-1 small">
-                                                <span class="text-muted">Service Provider Set Amount:</span>
+                                                <span class="text-muted">Service Base Amount:</span>
                                                 <span class="font-weight-bold text-dark" id="qv-base-price">₹0.00</span>
                                             </div>
                                             <div id="qv-addons-list">
                                                 <!-- Dynamic Addons -->
                                             </div>
-                                            <div class="d-flex justify-content-between mb-1 small" id="qv-platform-charge-row">
+                                            <div class="d-flex justify-content-between mb-1 small" id="qv-platform-charge-row" style="display: none !important;">
                                                 <span class="text-muted" id="qv-fee-label">Platform Charge:</span>
                                                 <span class="font-weight-bold text-info" id="qv-platform-charge">+₹0.00</span>
                                             </div>
                                             <hr class="my-2">
                                             <div class="d-flex justify-content-between font-weight-bold">
-                                                <span>Total Amount (Paid by Customer):</span>
+                                                <span>Total Service Amount:</span>
                                                 <span class="text-emerald" id="qv-breakdown-total" style="color: #10b981;">₹0.00</span>
                                             </div>
                                         </div>
@@ -1884,6 +1884,31 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
         // Run ticking clock every second
         setInterval(updateJobLiveClocks, 1000);
 
+        // Helper to get pure Provider Service Amount (excludes platform convenience fee)
+        function getProviderAmount(b) {
+            if (!b) return 0;
+            if (typeof b.provider_amount !== 'undefined' && b.provider_amount !== null && !isNaN(parseFloat(b.provider_amount)) && parseFloat(b.provider_amount) > 0) {
+                return parseFloat(b.provider_amount);
+            }
+            let baseP = parseFloat(b.package_price || b.service_price || b.base_price || 0);
+            let extrasTotal = 0;
+            if (b.extras) {
+                try {
+                    let extrasArr = typeof b.extras === 'string' ? JSON.parse(b.extras) : b.extras;
+                    if (Array.isArray(extrasArr) && extrasArr.length > 0) {
+                        extrasArr.forEach(item => {
+                            extrasTotal += parseFloat(item.price || 0);
+                        });
+                    }
+                } catch (e) {}
+            }
+            let provAmt = baseP + extrasTotal;
+            if (provAmt > 0) {
+                return provAmt;
+            }
+            return parseFloat(b.total_amount || b.order_total || 0);
+        }
+
         // Render Overview Recent Bookings with real dynamic data
         function renderOverviewRecentBookings(bookings) {
             const tbody = $('#overviewRecentBookingsBody');
@@ -1963,7 +1988,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                             <div><span class="deskboard-status-pill ${statusClass}">${statusText}</span></div>
                             ${timerHtml}
                         </td>
-                        <td class="tb-price">₹${Number(b.total_amount || 0).toFixed(2)}</td>
+                        <td class="tb-price">₹${Number(getProviderAmount(b)).toFixed(2)}</td>
                         <td>
                             <div class="d-flex align-items-center justify-content-center" style="gap:4px;">
                                 ${actionsHtml}
@@ -2339,8 +2364,8 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         actionsHtml += `<button class="btn btn-outline-danger btn-xs py-1 px-2 font-weight-bold mr-1" style="font-size:0.7rem; border-radius:4px;" onclick="updateBookingStatus(${o.id}, 'cancelled')"><i class="fas fa-ban mr-1"></i>Cancel</button>`;
                     } else if (statusLower === 'completed' || statusLower === 'rejected' || statusLower === 'cancelled') {
                         if (statusLower === 'completed' && String(o.payment_status || '').toUpperCase() !== 'PAID') {
-                            actionsHtml += `<button class="btn btn-info btn-xs py-1 px-2 font-weight-bold mr-1" style="font-size:0.75rem; border-radius:4px; display:inline-flex; align-items:center; gap:4px;" onclick="showBookingQrModal(${o.id}, '${o.booking_number}', ${o.total_amount}, '${encodeURIComponent(o.customer_name || 'Customer')}');"><i class="fas fa-qrcode"></i> QR Code</button>`;
-                            actionsHtml += `<button class="btn btn-success btn-xs py-1 px-2 font-weight-bold mr-1" style="font-size:0.75rem; border-radius:4px; display:inline-flex; align-items:center; gap:4px;" onclick="markBookingPaid(${o.id}, '${o.booking_number}', ${o.total_amount})"><i class="fas fa-money-bill-wave"></i> Mark Paid</button>`;
+                            actionsHtml += `<button class="btn btn-info btn-xs py-1 px-2 font-weight-bold mr-1" style="font-size:0.75rem; border-radius:4px; display:inline-flex; align-items:center; gap:4px;" onclick="showBookingQrModal(${o.id}, '${o.booking_number}', ${getProviderAmount(o)}, '${encodeURIComponent(o.customer_name || 'Customer')}');"><i class="fas fa-qrcode"></i> QR Code</button>`;
+                            actionsHtml += `<button class="btn btn-success btn-xs py-1 px-2 font-weight-bold mr-1" style="font-size:0.75rem; border-radius:4px; display:inline-flex; align-items:center; gap:4px;" onclick="markBookingPaid(${o.id}, '${o.booking_number}', ${getProviderAmount(o)})"><i class="fas fa-money-bill-wave"></i> Mark Paid</button>`;
                         }
                         actionsHtml += `<button class="btn btn-outline-danger btn-xs py-1 px-2 font-weight-bold" style="font-size:0.75rem; border-radius:4px; display:inline-flex; align-items:center; gap:4px;" onclick="deleteBooking(${o.id})"><i class="fas fa-trash-alt"></i> Delete</button>`;
                     } else {
@@ -2393,7 +2418,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         <td><div style="cursor: pointer;" onclick="showBookingQuickView(${o.id})" title="Click to Quick View"><div class="font-weight-bold text-dark">${o.customer_name || 'Customer'}</div><small class="text-muted font-weight-bold">${o.customer_phone || 'N/A'}</small></div></td>
                         <td><div class="font-weight-bold" style="font-size:0.8rem;">${o.service_name}</div><small class="text-muted">${vehicleInfo}</small>${extrasHtml}</td>
                         <td><div>${new Date(o.order_date).toLocaleDateString()}</div><small class="text-muted font-weight-bold">${scheduleTimeFormatted}</small></td>
-                        <td class="font-weight-bold text-gray-800">₹${o.order_total}</td>
+                        <td class="font-weight-bold text-gray-800">₹${Number(getProviderAmount(o)).toFixed(2)}</td>
                         <td>
                             <div><span class="badge badge-${badgeClass} px-2 py-1" style="text-transform: uppercase; font-size:0.65rem;">${o.status_name}</span></div>
                             ${timerHtml}
@@ -2667,7 +2692,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             $('#qv-status-badge').attr('class', 'badge px-3 py-2 text-uppercase ' + badgeClass).text(statusLabel);
 
             // Highlights
-            $('#qv-total-amount').text('₹' + Number(b.total_amount || 0).toFixed(2));
+            $('#qv-total-amount').text('₹' + Number(getProviderAmount(b)).toFixed(2));
 
             const pStatus = (b.payment_status || 'UNPAID').toUpperCase();
             $('#qv-payment-status').text(pStatus)
@@ -2716,25 +2741,19 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             }
 
             const totalAmt = parseFloat(b.total_amount || b.order_total || 0);
-            let providerSetAmount = baseP + addonsTotal;
+            let providerSetAmount = (typeof b.provider_amount !== 'undefined' && b.provider_amount !== null && Number(b.provider_amount) > 0)
+                ? Number(b.provider_amount)
+                : (baseP + addonsTotal);
             if (providerSetAmount <= 0) {
                 providerSetAmount = totalAmt;
                 baseP = totalAmt;
             }
 
-            let platformCharge = Math.max(0, Math.round((totalAmt - providerSetAmount) * 100) / 100);
-
-            $('#qv-base-price').text('₹' + baseP.toFixed(2));
+            $('#qv-total-amount').text('₹' + providerSetAmount.toFixed(2));
+            $('#qv-base-price').text('₹' + (baseP || providerSetAmount).toFixed(2));
             $('#qv-addons-list').html(addonsHtml);
-
-            if (platformCharge > 0) {
-                $('#qv-platform-charge-row').show();
-                $('#qv-platform-charge').text('+₹' + platformCharge.toFixed(2));
-            } else {
-                $('#qv-platform-charge-row').hide();
-            }
-
-            $('#qv-breakdown-total').text('₹' + totalAmt.toFixed(2));
+            $('#qv-platform-charge-row').hide();
+            $('#qv-breakdown-total').text('₹' + providerSetAmount.toFixed(2));
             const rawPm = (b.payment_method || '').toUpperCase();
             let pmDisplay = 'Pay on Completion';
             if (rawPm === 'ONLINE' || rawPm === 'RAZORPAY') {
@@ -2896,8 +2915,8 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 modalActionsHtml += `<button type="button" class="btn btn-outline-danger btn-sm font-weight-bold px-3" style="border-radius: 8px;" onclick="updateBookingStatus(${b.id}, 'cancelled'); $('#bookingQuickViewModal').modal('hide');"><i class="fas fa-ban mr-1"></i> Cancel Job</button>`;
             } else if (st === 'completed' || st === 'rejected' || st === 'cancelled') {
                 if (st === 'completed' && String(b.payment_status || '').toUpperCase() !== 'PAID') {
-                    modalActionsHtml += `<button type="button" class="btn btn-info btn-sm font-weight-bold px-3 mr-2" style="border-radius: 8px;" onclick="showBookingQrModal(${b.id}, '${b.booking_number}', ${b.total_amount}, '${encodeURIComponent(b.customer_name || 'Customer')}'); $('#bookingQuickViewModal').modal('hide');"><i class="fas fa-qrcode mr-1"></i> Show Payment QR</button>`;
-                    modalActionsHtml += `<button type="button" class="btn btn-success btn-sm font-weight-bold px-3 mr-2" style="border-radius: 8px;" onclick="markBookingPaid(${b.id}, '${b.booking_number}', ${b.total_amount}); $('#bookingQuickViewModal').modal('hide');"><i class="fas fa-money-bill-wave mr-1"></i> Mark Paid (Cash)</button>`;
+                    modalActionsHtml += `<button type="button" class="btn btn-info btn-sm font-weight-bold px-3 mr-2" style="border-radius: 8px;" onclick="showBookingQrModal(${b.id}, '${b.booking_number}', ${providerSetAmount}, '${encodeURIComponent(b.customer_name || 'Customer')}'); $('#bookingQuickViewModal').modal('hide');"><i class="fas fa-qrcode mr-1"></i> Show Payment QR</button>`;
+                    modalActionsHtml += `<button type="button" class="btn btn-success btn-sm font-weight-bold px-3 mr-2" style="border-radius: 8px;" onclick="markBookingPaid(${b.id}, '${b.booking_number}', ${providerSetAmount}); $('#bookingQuickViewModal').modal('hide');"><i class="fas fa-money-bill-wave mr-1"></i> Mark Paid (Cash)</button>`;
                 }
                 modalActionsHtml += `<button type="button" class="btn btn-outline-danger btn-sm font-weight-bold px-3" style="border-radius: 8px;" onclick="deleteBooking(${b.id})"><i class="fas fa-trash-alt mr-1"></i> Delete Booking</button>`;
             }
