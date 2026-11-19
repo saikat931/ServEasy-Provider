@@ -267,7 +267,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         <button id="sidebarMobileToggle" class="mobile-toggle-btn d-lg-none mr-3" type="button">
                             <i class="fas fa-bars"></i>
                         </button>
-                        <h2 class="welcome-heading">Welcome Back, <?= htmlspecialchars($dealer['full_name'] ?? $dealer['name'] ?? 'Provider') ?> ðŸ‘‹</h2>
+                        <h2 class="welcome-heading">Welcome Back, <?= htmlspecialchars($dealer['full_name'] ?? $dealer['name'] ?? 'Provider') ?> 👋</h2>
                     </div>
 
                     <div class="header-actions">
@@ -449,7 +449,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                                 <div class="stat-card-main">
                                     <div class="stat-meta">
                                         <span class="stat-title">Total Revenue</span>
-                                        <span class="stat-val">â‚¹<span id="stat-sales">0.00</span></span>
+                                        <span class="stat-val">₹<span id="stat-sales">0.00</span></span>
                                     </div>
                                     <div class="stat-icon-badge teal">
                                         <i class="fas fa-rupee-sign"></i>
@@ -672,22 +672,22 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                                 <span class="text-muted small text-uppercase font-weight-bold">Available for Withdrawal</span>
                                 <span class="badge badge-success px-2 py-1">Instant Settlement</span>
                             </div>
-                            <div class="h3 font-weight-bold text-emerald mb-0 mt-1" id="modal-available-balance">â‚¹0.00</div>
+                            <div class="h3 font-weight-bold text-emerald mb-0 mt-1" id="modal-available-balance">₹0.00</div>
                         </div>
                         <div id="payoutBalanceWarning" class="alert alert-warning py-2 px-3 small mb-3" style="display: none; border-radius: 8px;">
-                            <i class="fas fa-exclamation-triangle mr-1"></i> Minimum withdrawal is â‚¹100.00. You need at least â‚¹100.00 in available balance to submit a payout request.
+                            <i class="fas fa-exclamation-triangle mr-1"></i> Minimum withdrawal is ₹100.00. You need at least ₹100.00 in available balance to submit a payout request.
                         </div>
 
                         <div class="form-group mb-3">
-                            <label class="font-weight-bold text-gray-800 small text-uppercase">Payout Amount (â‚¹) <span class="text-danger">*</span></label>
+                            <label class="font-weight-bold text-gray-800 small text-uppercase">Payout Amount (₹) <span class="text-danger">*</span></label>
                             <div class="input-group">
                                 <div class="input-group-prepend">
-                                    <span class="input-group-text font-weight-bold">â‚¹</span>
+                                    <span class="input-group-text font-weight-bold">₹</span>
                                 </div>
-                                <input type="number" step="0.01" min="100" id="payoutWithdrawAmount" class="form-control" placeholder="Minimum â‚¹100.00" required>
+                                <input type="number" step="0.01" min="100" id="payoutWithdrawAmount" class="form-control" placeholder="Minimum ₹100.00" required>
                             </div>
                             <div class="d-flex justify-content-between align-items-center mt-1">
-                                <small class="text-muted">Minimum withdrawal: â‚¹100.00</small>
+                                <small class="text-muted">Minimum withdrawal: ₹100.00</small>
                                 <div id="payoutCalcFeedback" class="small"></div>
                             </div>
                         </div>
@@ -872,7 +872,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                             <div class="col-md-4 mb-2">
                                 <div class="p-3 bg-white rounded shadow-sm border-left border-success" style="border-left-width: 4px !important;">
                                     <div class="text-muted small text-uppercase font-weight-bold">Total Amount</div>
-                                    <div class="h4 font-weight-bold text-dark mb-0" id="qv-total-amount">â‚¹0.00</div>
+                                    <div class="h4 font-weight-bold text-dark mb-0" id="qv-total-amount">₹0.00</div>
                                     <span class="badge badge-light border mt-1" id="qv-payment-status">UNPAID</span>
                                 </div>
                             </div>
@@ -915,19 +915,19 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                                         <div class="bg-light p-3 rounded mb-2">
                                             <div class="d-flex justify-content-between mb-1 small">
                                                 <span class="text-muted">Service Provider Set Amount:</span>
-                                                <span class="font-weight-bold text-dark" id="qv-base-price">â‚¹0.00</span>
+                                                <span class="font-weight-bold text-dark" id="qv-base-price">₹0.00</span>
                                             </div>
                                             <div id="qv-addons-list">
                                                 <!-- Dynamic Addons -->
                                             </div>
                                             <div class="d-flex justify-content-between mb-1 small" id="qv-platform-charge-row">
                                                 <span class="text-muted" id="qv-fee-label">Platform Charge:</span>
-                                                <span class="font-weight-bold text-info" id="qv-platform-charge">+â‚¹0.00</span>
+                                                <span class="font-weight-bold text-info" id="qv-platform-charge">+₹0.00</span>
                                             </div>
                                             <hr class="my-2">
                                             <div class="d-flex justify-content-between font-weight-bold">
                                                 <span>Total Amount (Paid by Customer):</span>
-                                                <span class="text-emerald" id="qv-breakdown-total" style="color: #10b981;">â‚¹0.00</span>
+                                                <span class="text-emerald" id="qv-breakdown-total" style="color: #10b981;">₹0.00</span>
                                             </div>
                                         </div>
                                         <div class="d-flex justify-content-between align-items-center small text-muted px-1">
@@ -1103,7 +1103,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 
                     <div class="mb-2">
                         <div class="text-muted small font-weight-bold text-uppercase">Total Amount to Collect</div>
-                        <div class="font-weight-bold text-dark" style="font-size: 1.8rem;" id="qr-modal-amount">â‚¹0.00</div>
+                        <div class="font-weight-bold text-dark" style="font-size: 1.8rem;" id="qr-modal-amount">₹0.00</div>
                     </div>
                     <div class="small text-muted mb-3" id="qr-modal-customer-name">Customer: -</div>
 
@@ -1272,7 +1272,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         iconClass = 'fa-clock';
                         actionBtnText = 'View Status';
                         actionBtnClass = 'btn-warning';
-                        valDisplay = `<div class="text-warning small font-weight-bold"><i class="fas fa-clock mr-1"></i>Submitted â€” Pending Admin Approval</div><div class="text-muted" style="font-size:0.75rem;">${currentVal ? $('<div>').text(currentVal).html() : 'Verification in progress'}</div>`;
+                        valDisplay = `<div class="text-warning small font-weight-bold"><i class="fas fa-clock mr-1"></i>Submitted — Pending Admin Approval</div><div class="text-muted" style="font-size:0.75rem;">${currentVal ? $('<div>').text(currentVal).html() : 'Verification in progress'}</div>`;
                     } else if (st === 'rejected') {
                         badgeText = 'Rejected';
                         bgBadge = 'badge-danger';
@@ -1280,7 +1280,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         iconClass = 'fa-times-circle';
                         actionBtnText = 'Resubmit ID';
                         actionBtnClass = 'btn-danger';
-                        valDisplay = `<div class="text-danger small font-weight-bold"><i class="fas fa-times-circle mr-1"></i>Rejected by Admin â€” Resubmit Required</div>`;
+                        valDisplay = `<div class="text-danger small font-weight-bold"><i class="fas fa-times-circle mr-1"></i>Rejected by Admin — Resubmit Required</div>`;
                     } else {
                         badgeText = 'Missing';
                         bgBadge = 'badge-danger';
@@ -1526,7 +1526,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                     <input type="text" name="addon_name[]" class="form-control form-control-sm addon-name-input" placeholder="Service name (e.g. Interior Polish)..." required style="border-radius: 6px; font-size: 0.85rem; flex: 2;">
                     <div class="input-group input-group-sm" style="flex: 1; border-radius: 6px; overflow: hidden;">
                         <div class="input-group-prepend">
-                            <span class="input-group-text" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">â‚¹</span>
+                            <span class="input-group-text" style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">₹</span>
                         </div>
                         <input type="number" name="addon_price[]" step="0.01" min="0.00" class="form-control form-control-sm addon-price-input" placeholder="Price..." required style="border-radius: 6px; font-size: 0.85rem;">
                     </div>
@@ -1963,7 +1963,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                             <div><span class="deskboard-status-pill ${statusClass}">${statusText}</span></div>
                             ${timerHtml}
                         </td>
-                        <td class="tb-price">â‚¹${Number(b.total_amount || 0).toFixed(2)}</td>
+                        <td class="tb-price">₹${Number(b.total_amount || 0).toFixed(2)}</td>
                         <td>
                             <div class="d-flex align-items-center justify-content-center" style="gap:4px;">
                                 ${actionsHtml}
@@ -2044,11 +2044,11 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                                     </div>
                                 </div>
                             </td>
-                            <td class="font-weight-bold text-emerald" style="font-size: 1.05rem;">â‚¹${p.price || '0.00'}</td>
+                            <td class="font-weight-bold text-emerald" style="font-size: 1.05rem;">₹${p.price || '0.00'}</td>
                             <td>
                                 <div class="small text-nowrap d-flex align-items-center" style="gap: 8px;">
                                     <span><i class="far fa-clock text-muted mr-1"></i>${p.qty_in_stock || 0} mins</span>
-                                    <span class="text-muted">â€¢</span>
+                                    <span class="text-muted">•</span>
                                     <span><i class="fas fa-route text-muted mr-1"></i>${p.service_range_km ? parseFloat(p.service_range_km).toFixed(0) + ' km' : '10 km'}</span>
                                 </div>
                             </td>
@@ -2382,7 +2382,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         try {
                             let extrasArr = JSON.parse(o.extras);
                             if (Array.isArray(extrasArr) && extrasArr.length > 0) {
-                                let list = extrasArr.map(e => `${e.name} (+â‚¹${parseFloat(e.price).toFixed(2)})`).join(', ');
+                                let list = extrasArr.map(e => `${e.name} (+₹${parseFloat(e.price).toFixed(2)})`).join(', ');
                                 extrasHtml = `<div class="text-emerald font-weight-bold" style="font-size:0.75rem; margin-top:2px;"><i class="fas fa-plus-circle mr-1"></i>Add-ons: ${list}</div>`;
                             }
                         } catch (e) {}
@@ -2393,7 +2393,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         <td><div style="cursor: pointer;" onclick="showBookingQuickView(${o.id})" title="Click to Quick View"><div class="font-weight-bold text-dark">${o.customer_name || 'Customer'}</div><small class="text-muted font-weight-bold">${o.customer_phone || 'N/A'}</small></div></td>
                         <td><div class="font-weight-bold" style="font-size:0.8rem;">${o.service_name}</div><small class="text-muted">${vehicleInfo}</small>${extrasHtml}</td>
                         <td><div>${new Date(o.order_date).toLocaleDateString()}</div><small class="text-muted font-weight-bold">${scheduleTimeFormatted}</small></td>
-                        <td class="font-weight-bold text-gray-800">â‚¹${o.order_total}</td>
+                        <td class="font-weight-bold text-gray-800">₹${o.order_total}</td>
                         <td>
                             <div><span class="badge badge-${badgeClass} px-2 py-1" style="text-transform: uppercase; font-size:0.65rem;">${o.status_name}</span></div>
                             ${timerHtml}
@@ -2667,7 +2667,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             $('#qv-status-badge').attr('class', 'badge px-3 py-2 text-uppercase ' + badgeClass).text(statusLabel);
 
             // Highlights
-            $('#qv-total-amount').text('â‚¹' + Number(b.total_amount || 0).toFixed(2));
+            $('#qv-total-amount').text('₹' + Number(b.total_amount || 0).toFixed(2));
 
             const pStatus = (b.payment_status || 'UNPAID').toUpperCase();
             $('#qv-payment-status').text(pStatus)
@@ -2708,7 +2708,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                             addonsTotal += itemPrice;
                             addonsHtml += `<div class="d-flex justify-content-between mb-1 small">
                                 <span class="text-muted"><i class="fas fa-plus mr-1 text-emerald"></i>${item.name}</span>
-                                <span class="font-weight-bold text-dark">+â‚¹${itemPrice.toFixed(2)}</span>
+                                <span class="font-weight-bold text-dark">+₹${itemPrice.toFixed(2)}</span>
                             </div>`;
                         });
                     }
@@ -2724,17 +2724,17 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 
             let platformCharge = Math.max(0, Math.round((totalAmt - providerSetAmount) * 100) / 100);
 
-            $('#qv-base-price').text('â‚¹' + baseP.toFixed(2));
+            $('#qv-base-price').text('₹' + baseP.toFixed(2));
             $('#qv-addons-list').html(addonsHtml);
 
             if (platformCharge > 0) {
                 $('#qv-platform-charge-row').show();
-                $('#qv-platform-charge').text('+â‚¹' + platformCharge.toFixed(2));
+                $('#qv-platform-charge').text('+₹' + platformCharge.toFixed(2));
             } else {
                 $('#qv-platform-charge-row').hide();
             }
 
-            $('#qv-breakdown-total').text('â‚¹' + totalAmt.toFixed(2));
+            $('#qv-breakdown-total').text('₹' + totalAmt.toFixed(2));
             const rawPm = (b.payment_method || '').toUpperCase();
             let pmDisplay = 'Pay on Completion';
             if (rawPm === 'ONLINE' || rawPm === 'RAZORPAY') {
@@ -2968,7 +2968,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 let rawName = (res.full_name || '').trim();
                 let fullName = (rawName.toLowerCase() === 'service provider') ? '' : rawName;
 
-                // â”€â”€ Left card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── Left card ────────────────────────────────────────────────
                 if (hasCompany) {
                     $('#prof-name').text(companyName);
                     $('#prof-company-display').html('<i class="fas fa-building mr-1 text-emerald"></i>' + $('<div>').text(companyName).html());
@@ -2988,7 +2988,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                     .removeClass('badge-success badge-danger badge-secondary')
                     .addClass(res.status === 'active' ? 'badge-success' : 'badge-danger');
 
-                // â”€â”€ Verified status badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── Verified status badge ────────────────────────────────────
                 let vs = res.verified_status || 'pending';
                 let vsBadge = 'badge-secondary';
                 let vsLabel = vs.replace('_', ' ').toUpperCase();
@@ -3000,7 +3000,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                     .removeClass('badge-success badge-danger badge-warning badge-secondary')
                     .addClass(vsBadge);
 
-                // â”€â”€ Editable account details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── Editable account details ──────────────────────────────────
                 $('#edit-full-name').val(fullName);
                 $('#edit-email').val(res.email || '');
                 $('#edit-phone').val(res.phone || '');
@@ -3015,7 +3015,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                     $('#company-register-prompt-row').show();
                 }
 
-                // â”€â”€ Location & range â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── Location & range ──────────────────────────────────────────
                 let finalAddr = (res.location_address && res.location_address.trim()) ? res.location_address : '';
                 let finalLm   = (res.landmark && res.landmark.trim()) ? res.landmark : '';
                 let finalPin  = (res.pincode && res.pincode.trim()) ? res.pincode : '';
@@ -3028,7 +3028,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 $('#edit-latitude').val(finalLat);
                 $('#edit-longitude').val(finalLng);
                 if (finalLat && finalLng) {
-                    $('#lat-lng-display').text('ðŸ“ ' + parseFloat(finalLat).toFixed(5) + ', ' + parseFloat(finalLng).toFixed(5));
+                    $('#lat-lng-display').text('📍 ' + parseFloat(finalLat).toFixed(5) + ', ' + parseFloat(finalLng).toFixed(5));
                 } else {
                     $('#lat-lng-display').text('');
                 }
@@ -3037,7 +3037,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 $('#profileMapSection').hide();
                 $('#toggleProfileMapBtn').html('<i class="fas fa-map-marked-alt mr-1"></i> Pin on Map');
 
-                // â”€â”€ Branches Card: Gate branches on company â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── Branches Card: Gate branches on company ───────────────────
                 if (hasCompany) {
                     $('#branchCompanyLockAlert').hide();
                     $('#btnRegisterCompanyForBranch').hide();
@@ -3052,7 +3052,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                     $('#addBranchForm').hide();
                 }
 
-                // â”€â”€ Branches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                // ── Branches ──────────────────────────────────────────────────
                 window.currentProviderBranches = res.branches || [];
                 renderBranches(res.branches || []);
                 
@@ -3231,7 +3231,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             window.open(gmapsUrl, '_blank');
 
             if (typeof Notify !== 'undefined' && Notify.info) {
-                Notify.info('ðŸ“ On Google Maps: Right-click your location and click coordinates to copy, then paste them into the search box!', { single: true });
+                Notify.info('📍 On Google Maps: Right-click your location and click coordinates to copy, then paste them into the search box!', { single: true });
             }
         }
 
@@ -3246,11 +3246,11 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 
                 // Google Maps Roadmap tile layer (Crisp road network, landmarks, shops)
                 const googleRoads = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-                    attribution: 'Â© Google Maps',
+                    attribution: '© Google Maps',
                     maxZoom: 20
                 });
                 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: 'Â© OpenStreetMap contributors',
+                    attribution: '© OpenStreetMap contributors',
                     maxZoom: 19
                 });
 
@@ -3282,11 +3282,11 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 branchMap = L.map('branchMapContainer', { zoomControl: true }).setView([20.5937, 78.9629], 5);
                 
                 const googleRoads = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-                    attribution: 'Â© Google Maps',
+                    attribution: '© Google Maps',
                     maxZoom: 20
                 });
                 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: 'Â© OpenStreetMap contributors',
+                    attribution: '© OpenStreetMap contributors',
                     maxZoom: 19
                 });
 
@@ -3379,8 +3379,8 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 
             // Clean up administrative noise anywhere in the string
             address = address
-                .replace(/,\s*(Greater\s*Kolkata|Barrackpur\s*[-â€“]\s*II|Barrackpore\s*[-â€“]?\s*[I|1|2|II]+|North\s*24\s*Parganas|South\s*24\s*Parganas|India)\b/gi, '')
-                .replace(/\b(Greater\s*Kolkata|Barrackpur\s*[-â€“]\s*II|Barrackpore\s*[-â€“]?\s*[I|1|2|II]+|North\s*24\s*Parganas|South\s*24\s*Parganas|India),\s*/gi, '')
+                .replace(/,\s*(Greater\s*Kolkata|Barrackpur\s*[-–]\s*II|Barrackpore\s*[-–]?\s*[I|1|2|II]+|North\s*24\s*Parganas|South\s*24\s*Parganas|India)\b/gi, '')
+                .replace(/\b(Greater\s*Kolkata|Barrackpur\s*[-–]\s*II|Barrackpore\s*[-–]?\s*[I|1|2|II]+|North\s*24\s*Parganas|South\s*24\s*Parganas|India),\s*/gi, '')
                 .replace(/,\s*India$/gi, '')
                 .replace(/\s*,\s*,+/g, ', ')
                 .trim()
@@ -3480,14 +3480,14 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
         function updateProfileLocation(lat, lng) {
             $('#edit-latitude').val(lat.toFixed(7));
             $('#edit-longitude').val(lng.toFixed(7));
-            $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
+            $('#lat-lng-display').text('📍 ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
             
             reverseGeocodeCoords(lat, lng, function(res) {
                 if (res.address) $('#edit-location-address').val(res.address);
                 if (res.landmark) $('#edit-landmark').val(res.landmark);
                 if (res.pincode) $('#edit-pincode').val(res.pincode);
                 if (profileMapMarker) {
-                    profileMapMarker.bindPopup(`<b>ðŸ“ ${res.landmark || 'Pinned Location'}</b><br><small>${res.address}</small>`).openPopup();
+                    profileMapMarker.bindPopup(`<b>📍 ${res.landmark || 'Pinned Location'}</b><br><small>${res.address}</small>`).openPopup();
                 }
             });
         }
@@ -3500,7 +3500,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 if (res.address) $('#branch-address').val(res.address);
                 if (res.pincode) $('#branch-pincode').val(res.pincode);
                 if (branchMapMarker) {
-                    branchMapMarker.bindPopup(`<b>ðŸ“ ${res.landmark || 'Branch Location'}</b><br><small>${res.address}</small>`).openPopup();
+                    branchMapMarker.bindPopup(`<b>📍 ${res.landmark || 'Branch Location'}</b><br><small>${res.address}</small>`).openPopup();
                 }
             });
         }
@@ -3518,19 +3518,19 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 
             $('#edit-latitude').val(lat.toFixed(7));
             $('#edit-longitude').val(lng.toFixed(7));
-            $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
+            $('#lat-lng-display').text('📍 ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
 
             reverseGeocodeCoords(lat, lng, function(res) {
                 if (res.address) $('#edit-location-address').val(res.address);
                 if (res.landmark) $('#edit-landmark').val(res.landmark);
                 if (res.pincode) $('#edit-pincode').val(res.pincode);
                 if (profileMapMarker) {
-                    profileMapMarker.bindPopup(`<b>ðŸ“ ${label || res.landmark || 'Pinned Location'}</b><br><small>${res.address}</small>`).openPopup();
+                    profileMapMarker.bindPopup(`<b>📍 ${label || res.landmark || 'Pinned Location'}</b><br><small>${res.address}</small>`).openPopup();
                 }
             });
 
             if (typeof Notify !== 'undefined' && Notify.success) {
-                Notify.success(`ðŸ“ Location set: ${lat.toFixed(5)}, ${lng.toFixed(5)}!`, { single: true });
+                Notify.success(`📍 Location set: ${lat.toFixed(5)}, ${lng.toFixed(5)}!`, { single: true });
             }
         }
 
@@ -3552,12 +3552,12 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 if (res.address) $('#branch-address').val(res.address);
                 if (res.pincode) $('#branch-pincode').val(res.pincode);
                 if (branchMapMarker) {
-                    branchMapMarker.bindPopup(`<b>ðŸ“ ${label || res.landmark || 'Branch Location'}</b><br><small>${res.address}</small>`).openPopup();
+                    branchMapMarker.bindPopup(`<b>📍 ${label || res.landmark || 'Branch Location'}</b><br><small>${res.address}</small>`).openPopup();
                 }
             });
 
             if (typeof Notify !== 'undefined' && Notify.success) {
-                Notify.success(`ðŸ“ Branch location set: ${lat.toFixed(5)}, ${lng.toFixed(5)}!`, { single: true });
+                Notify.success(`📍 Branch location set: ${lat.toFixed(5)}, ${lng.toFixed(5)}!`, { single: true });
             }
         }
 
@@ -3675,7 +3675,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 
             $('#edit-latitude').val(lat.toFixed(7));
             $('#edit-longitude').val(lng.toFixed(7));
-            $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
+            $('#lat-lng-display').text('📍 ' + lat.toFixed(7) + ', ' + lng.toFixed(7));
 
             const addr = place.display_name || '';
             const a = place.address || {};
@@ -3687,12 +3687,12 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             if (landmark && !$('#edit-landmark').val()) $('#edit-landmark').val(landmark);
 
             if (profileMapMarker) {
-                profileMapMarker.bindPopup(`<b>ðŸ“ ${place.name || 'Pinned Location'}</b><br><small>${addr}</small>`).openPopup();
+                profileMapMarker.bindPopup(`<b>📍 ${place.name || 'Pinned Location'}</b><br><small>${addr}</small>`).openPopup();
             }
 
             // Exactly ONE notification
             if (typeof Notify !== 'undefined' && Notify.success) {
-                Notify.success(`ðŸ“ Location set: ${place.name || addr.split(',')[0]}!`, { single: true });
+                Notify.success(`📍 Location set: ${place.name || addr.split(',')[0]}!`, { single: true });
             }
         }
 
@@ -3791,12 +3791,12 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             if (landmark && !$('#branch-landmark').val()) $('#branch-landmark').val(landmark);
 
             if (branchMapMarker) {
-                branchMapMarker.bindPopup(`<b>ðŸ“ ${place.name || 'Branch Location'}</b><br><small>${addr}</small>`).openPopup();
+                branchMapMarker.bindPopup(`<b>📍 ${place.name || 'Branch Location'}</b><br><small>${addr}</small>`).openPopup();
             }
 
             // Exactly ONE notification
             if (typeof Notify !== 'undefined' && Notify.success) {
-                Notify.success(`ðŸ“ Branch location set: ${place.name || addr.split(',')[0]}!`, { single: true });
+                Notify.success(`📍 Branch location set: ${place.name || addr.split(',')[0]}!`, { single: true });
             }
         }
 
@@ -3829,11 +3829,11 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 
                         $('#edit-latitude').val(lat.toFixed(7));
                         $('#edit-longitude').val(lng.toFixed(7));
-                        $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(5) + ', ' + lng.toFixed(5));
+                        $('#lat-lng-display').text('📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5));
                         updateProfileLocation(lat, lng);
 
                         if (typeof Notify !== 'undefined' && Notify.success) {
-                            Notify.success('ðŸ“ Live network location detected and set!', { single: true });
+                            Notify.success('📍 Live network location detected and set!', { single: true });
                         }
                     },
                     error: function() {
@@ -3867,11 +3867,11 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 
                 $('#edit-latitude').val(lat.toFixed(7));
                 $('#edit-longitude').val(lng.toFixed(7));
-                $('#lat-lng-display').text('ðŸ“ ' + lat.toFixed(5) + ', ' + lng.toFixed(5));
+                $('#lat-lng-display').text('📍 ' + lat.toFixed(5) + ', ' + lng.toFixed(5));
                 updateProfileLocation(lat, lng);
 
                 if (typeof Notify !== 'undefined' && Notify.success) {
-                    Notify.success('ðŸ“ Live location detected and set!', { single: true });
+                    Notify.success('📍 Live location detected and set!', { single: true });
                 }
             }, function(err) {
                 // If browser GPS fails or is denied, smoothly fallback to BigDataCloud
@@ -3911,7 +3911,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         updateBranchLocation(lat, lng);
 
                         if (typeof Notify !== 'undefined' && Notify.success) {
-                            Notify.success('ðŸ“ Branch live network location set successfully!', { single: true });
+                            Notify.success('📍 Branch live network location set successfully!', { single: true });
                         }
                     },
                     error: function() {
@@ -3948,7 +3948,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 updateBranchLocation(lat, lng);
 
                 if (typeof Notify !== 'undefined' && Notify.success) {
-                    Notify.success('ðŸ“ Branch live location set successfully!', { single: true });
+                    Notify.success('📍 Branch live location set successfully!', { single: true });
                 }
             }, function(err) {
                 fallbackBranchBdcClientGeo();
@@ -4169,21 +4169,21 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             $('#wallet-pending').text(pending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#wallet-earned').text(earned.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#wallet-withdrawn').text(withdrawn.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-            $('#modal-available-balance').text('â‚¹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            $('#modal-available-balance').text('₹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
             // Update Dynamic Platform Fee column header & KPI note
             const feePercent = data.platform_fee_percent !== undefined ? parseFloat(data.platform_fee_percent) : 10;
             const feeType = data.platform_fee_type || 'percentage';
             const feeAmount = parseFloat(data.platform_fee_amount || 0);
             const feeFormattedPct = (Number.isInteger(feePercent) ? feePercent.toString() : feePercent.toFixed(2).replace(/\.?0+$/, '')) + '%';
-            const feeLabel = (feeType === 'percentage') ? feeFormattedPct : ('â‚¹' + feeAmount.toFixed(2));
+            const feeLabel = (feeType === 'percentage') ? feeFormattedPct : ('₹' + feeAmount.toFixed(2));
 
             $('#th-wallet-platform-fee').text('Platform Fee (' + feeLabel + ')');
             $('#wallet-fee-note').text('After ' + feeLabel + ' Platform Fee');
 
             // 2. Update Bank Account Card
             if (bank && bank.account_number) {
-                const maskedAcc = 'â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ' + bank.account_number.slice(-4);
+                const maskedAcc = '•••• •••• ' + bank.account_number.slice(-4);
                 $('#wallet-bank-name').text(bank.bank_name ? (bank.bank_name + ' (' + bank.account_holder_name + ')') : bank.account_holder_name);
                 $('#wallet-bank-badge').removeClass('badge-secondary badge-danger').addClass('badge-success').text(bank.is_verified ? 'Verified & Active' : 'Active');
                 $('#wallet-bank-details').html(`<i class="fas fa-credit-card mr-1 text-muted"></i> A/C: <strong>${maskedAcc}</strong> &nbsp;|&nbsp; <i class="fas fa-code-branch mr-1 text-muted"></i> IFSC: <strong>${bank.ifsc_code}</strong>`);
@@ -4250,9 +4250,9 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                                 <div class="font-weight-bold text-gray-800">${cName}</div>
                                 <small class="text-muted">${t.customer_phone || ''}</small>
                             </td>
-                            <td><span class="font-weight-bold text-gray-800">â‚¹${gross}</span></td>
-                            <td><span class="text-danger small font-weight-bold">-â‚¹${fee}</span></td>
-                            <td><strong class="text-emerald" style="color: #05C279; font-size: 0.95rem;">+â‚¹${net}</strong></td>
+                            <td><span class="font-weight-bold text-gray-800">₹${gross}</span></td>
+                            <td><span class="text-danger small font-weight-bold">-₹${fee}</span></td>
+                            <td><strong class="text-emerald" style="color: #05C279; font-size: 0.95rem;">+₹${net}</strong></td>
                             <td><span class="badge badge-light border"><i class="fas fa-credit-card mr-1 text-primary"></i>${t.payment_gateway || 'RAZORPAY'}</span></td>
                             <td>${statusBadge}</td>
                             <td><small class="text-muted font-weight-bold">${dateStr}</small></td>
@@ -4286,7 +4286,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                     poHtml += `
                         <tr>
                             <td><strong class="text-gray-800" style="font-family: monospace;">${p.payout_ref}</strong></td>
-                            <td><strong class="text-dark" style="font-size: 1rem;">â‚¹${amt}</strong></td>
+                            <td><strong class="text-dark" style="font-size: 1rem;">₹${amt}</strong></td>
                             <td>${stBadge}</td>
                             <td>${p.utr_number ? `<strong class="text-success font-monospace">${p.utr_number}</strong>` : '<span class="text-muted small">Awaiting Admin UTR</span>'}</td>
                             <td><small class="text-muted">${p.admin_notes || 'Withdrawal request'}</small></td>
@@ -4365,22 +4365,22 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             if (avail <= 0) {
                 if (showAlert) {
                     if (typeof Notify !== 'undefined' && Notify.warning) {
-                        Notify.warning('Withdrawal condition not met: Your available wallet balance is â‚¹0.00. Earnings will unlock automatically once active bookings/orders are marked completed.', { title: 'Zero Balance' });
+                        Notify.warning('Withdrawal condition not met: Your available wallet balance is ₹0.00. Earnings will unlock automatically once active bookings/orders are marked completed.', { title: 'Zero Balance' });
                     } else {
-                        alert('Withdrawal condition not met: Your available wallet balance is â‚¹0.00. Earnings will unlock automatically once active bookings/orders are marked completed.');
+                        alert('Withdrawal condition not met: Your available wallet balance is ₹0.00. Earnings will unlock automatically once active bookings/orders are marked completed.');
                     }
                 }
                 return { eligible: false, reason: 'zero_balance' };
             }
 
-            // Condition 3: Minimum threshold limit (â‚¹100.00)
+            // Condition 3: Minimum threshold limit (₹100.00)
             if (avail < 100) {
-                var balFmt = 'â‚¹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                var balFmt = '₹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 if (showAlert) {
                     if (typeof Notify !== 'undefined' && Notify.warning) {
-                        Notify.warning('Withdrawal condition not met: Minimum withdrawal threshold is â‚¹100.00. Your current available balance is ' + balFmt + '.', { title: 'Threshold Not Met' });
+                        Notify.warning('Withdrawal condition not met: Minimum withdrawal threshold is ₹100.00. Your current available balance is ' + balFmt + '.', { title: 'Threshold Not Met' });
                     } else {
-                        alert('Withdrawal condition not met: Minimum withdrawal threshold is â‚¹100.00. Your current available balance is ' + balFmt + '.');
+                        alert('Withdrawal condition not met: Minimum withdrawal threshold is ₹100.00. Your current available balance is ' + balFmt + '.');
                     }
                 }
                 return { eligible: false, reason: 'below_threshold', balance: avail };
@@ -4417,7 +4417,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             var avail = check.balance;
             var bank = check.bank;
 
-            $('#modal-available-balance').text('â‚¹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            $('#modal-available-balance').text('₹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#payoutWithdrawAmount').val('').attr('max', avail);
             $('#payoutNotes').val('');
             $('#payoutCalcFeedback').html('');
@@ -4425,7 +4425,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             $('#btnSubmitPayout').prop('disabled', false);
 
             if (bank && bank.account_number) {
-                var masked = 'â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ' + bank.account_number.slice(-4);
+                var masked = '•••• •••• ' + bank.account_number.slice(-4);
                 $('#modal-dest-bank-label').text(`${bank.bank_name || 'Bank'} (${masked})`);
                 $('#destBankRadio').prop('disabled', false).prop('checked', true);
             } else {
@@ -4455,13 +4455,13 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 
             if (amount < 100) {
                 if (typeof Notify !== 'undefined' && Notify.error) {
-                    Notify.error('Minimum withdrawal amount is â‚¹100.00.');
+                    Notify.error('Minimum withdrawal amount is ₹100.00.');
                 }
                 return;
             }
             if (amount > avail) {
                 if (typeof Notify !== 'undefined' && Notify.error) {
-                    Notify.error(`Requested amount exceeds available balance of â‚¹${avail.toFixed(2)}.`);
+                    Notify.error(`Requested amount exceeds available balance of ₹${avail.toFixed(2)}.`);
                 }
                 return;
             }
@@ -4675,10 +4675,10 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                 $('#payoutCalcFeedback').html('<span class="text-danger font-weight-bold"><i class="fas fa-exclamation-circle mr-1"></i> Exceeds available balance!</span>');
                 $('#btnSubmitPayout').prop('disabled', true);
             } else if (val < 100) {
-                $('#payoutCalcFeedback').html('<span class="text-warning font-weight-bold"><i class="fas fa-info-circle mr-1"></i> Min â‚¹100.00</span>');
+                $('#payoutCalcFeedback').html('<span class="text-warning font-weight-bold"><i class="fas fa-info-circle mr-1"></i> Min ₹100.00</span>');
                 $('#btnSubmitPayout').prop('disabled', true);
             } else {
-                $('#payoutCalcFeedback').html('<span class="text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Remaining: â‚¹' + rem.toFixed(2) + '</span>');
+                $('#payoutCalcFeedback').html('<span class="text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Remaining: ₹' + rem.toFixed(2) + '</span>');
                 $('#btnSubmitPayout').prop('disabled', false);
             }
         });
@@ -4722,13 +4722,13 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             var avail = check.balance;
             var bank = check.bank;
             
-            $('#modal-available-balance').text('â‚¹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            $('#modal-available-balance').text('₹' + avail.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#payoutWithdrawAmount').val('').attr('max', avail);
             $('#payoutNotes').val('');
             $('#payoutCalcFeedback').html('');
 
             if (bank && bank.account_number) {
-                var masked = 'â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ ' + bank.account_number.slice(-4);
+                var masked = '•••• •••• ' + bank.account_number.slice(-4);
                 $('#modal-dest-bank-label').text(`${bank.bank_name || 'Bank'} (${masked})`);
                 $('#destBankRadio').prop('disabled', false).prop('checked', true);
             } else {
@@ -4821,7 +4821,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
         const custName = customerNameEnc ? decodeURIComponent(customerNameEnc) : 'Customer';
         const amtNum = parseFloat(amount || 0).toFixed(2);
         $('#qr-modal-booking-ref').text('Ref: #' + bookingNumber);
-        $('#qr-modal-amount').text('â‚¹' + amtNum);
+        $('#qr-modal-amount').text('₹' + amtNum);
         $('#qr-modal-customer-name').text('Customer: ' + custName);
 
         const upiString = `upi://pay?pa=serveasy@upi&pn=ServEasy%20Marketplace&am=${amtNum}&tr=${encodeURIComponent(bookingNumber)}&tn=Booking%20Payment%20${encodeURIComponent(bookingNumber)}&cu=INR`;
@@ -4839,7 +4839,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
     window.markBookingPaid = function(id, ref, amount) {
         Swal.fire({
             title: 'Confirm Cash Payment',
-            html: `Did you collect <strong>â‚¹${parseFloat(amount).toFixed(2)}</strong> in cash from the customer for booking <strong>#${ref}</strong>?<br><br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> This marks the booking as PAID and incurs <strong>â‚¹20.00</strong> site service charge due.</small>`,
+            html: `Did you collect <strong>₹${parseFloat(amount).toFixed(2)}</strong> in cash from the customer for booking <strong>#${ref}</strong>?<br><br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> This marks the booking as PAID and incurs <strong>₹20.00</strong> site service charge due.</small>`,
             icon: 'question',
             showCancelButton: true,
             confirmButtonColor: '#10b981',
@@ -4901,7 +4901,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                     <div class="d-flex align-items-center">
                         <i class="fas fa-exclamation-circle fa-2x mr-3 text-warning"></i>
                         <div>
-                            <strong style="font-size: 1rem;">Outstanding Site Service Charge: â‚¹${due.toFixed(2)}</strong>
+                            <strong style="font-size: 1rem;">Outstanding Site Service Charge: ₹${due.toFixed(2)}</strong>
                             <p class="mb-0 small" style="color: #92400e;">You have collected offline cash. Site service charge must be paid before you can accept new bookings.</p>
                         </div>
                     </div>
@@ -4924,13 +4924,13 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
         balance = balance !== undefined ? balance : currentWalletBalance;
 
         const canPayWallet = balance >= due;
-        const walletText = `Pay from Wallet Balance (Available: â‚¹${balance.toFixed(2)})`;
+        const walletText = `Pay from Wallet Balance (Available: ₹${balance.toFixed(2)})`;
 
         Swal.fire({
             title: '<i class="fas fa-receipt text-warning mr-2"></i> Pay Site Service Charge',
             html: `
                 <div class="text-left py-2">
-                    <p class="mb-2">Total Outstanding Dues: <strong class="text-danger font-size-lg">â‚¹${due.toFixed(2)}</strong></p>
+                    <p class="mb-2">Total Outstanding Dues: <strong class="text-danger font-size-lg">₹${due.toFixed(2)}</strong></p>
                     <p class="small text-muted mb-3">Clearing your dues immediately restores your ability to accept new customer service requests.</p>
                     
                     <div class="custom-control custom-radio mb-2 p-2 border rounded ${canPayWallet ? '' : 'text-muted'}" style="background: rgba(0,0,0,0.02);">
@@ -4952,7 +4952,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
             showCancelButton: true,
             confirmButtonColor: '#10b981',
             cancelButtonColor: '#6c757d',
-            confirmButtonText: '<i class="fas fa-lock mr-1"></i> Pay â‚¹' + due.toFixed(2),
+            confirmButtonText: '<i class="fas fa-lock mr-1"></i> Pay ₹' + due.toFixed(2),
             cancelButtonText: 'Cancel'
         }).then((result) => {
             if (result.isConfirmed) {
@@ -4966,7 +4966,7 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
                         if (res.status === 'success') {
                             Swal.fire({
                                 icon: 'success',
-                                title: 'Service Charge Cleared! ðŸŽ‰',
+                                title: 'Service Charge Cleared! 🎉',
                                 text: res.message,
                                 confirmButtonColor: '#0084ff'
                             });
