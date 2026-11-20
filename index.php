@@ -86,6 +86,11 @@ $provider_branches   = $initRes['provider_branches'] ?? [];
 <html lang="en">
 
 <head>
+  <!-- ServEasy Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="alternate icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <script src="./config.js?v=20261118v2"></script>
   <script src="./serveasy-api-bridge.js?v=20261118v2"></script>
     <meta charset="utf-8">
