@@ -1,0 +1,7 @@
+# ==========================================================
+# ServEasy Provider Portal - Robots.txt File
+# Disallow all search engine crawlers and bots across all files
+# ==========================================================
+
+User-agent: *
+Disallow: /
